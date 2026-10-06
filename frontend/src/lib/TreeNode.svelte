@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { editableText } from '$lib/editableText';
 	import type { TreeNode } from '$lib/types';
 	import { isSection } from '$lib/types';
 	import { renderToString } from 'katex';
@@ -285,7 +286,8 @@
 					oninput={(e) => onSetLabel(node.id, (e.currentTarget as HTMLElement).textContent ?? '')}
 					onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); } }}
 					onmousedown={(e) => e.stopPropagation()}
-				>{node.label}</div>
+				{@attach editableText(() => node.label)}
+				></div>
 
 				{#if !isSection(node) && (node.generated_content || node.content)}
 					{#if node.type === 'equation'}
@@ -308,7 +310,8 @@
 						oninput={(e) => onSetDesc(node.id, (e.currentTarget as HTMLElement).textContent ?? '')}
 						onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); } }}
 						onmousedown={(e) => e.stopPropagation()}
-					>{node.desc}</div>
+					{@attach editableText(() => node.desc)}
+					></div>
 				{/if}
 
 				{#if !isSection(node) && node.type === 'image' && node.imageUrl}

@@ -69,7 +69,8 @@
 		padding: var(--nd-space-6) clamp(1rem, 3vw, 2.5rem) var(--nd-space-10);
 	}
 
-	.side { display: grid; gap: 2px; padding-top: var(--nd-space-4); }
+	/* Sticky, so the nav stays in view on long pages. */
+	.side { position: sticky; top: var(--nd-topbar-h); display: grid; gap: 2px; padding-top: var(--nd-space-4); }
 	.side a {
 		display: flex;
 		align-items: baseline;

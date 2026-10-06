@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { editableText } from '$lib/editableText';
 	import type { TreeNode } from '$lib/types';
 	import { renderToString } from 'katex';
 	import 'katex/dist/katex.min.css';
@@ -85,7 +86,8 @@
 					class="para"
 					class:editable={canEdit}
 					onblur={(e) => handleTextBlur(node, e.currentTarget as HTMLElement)}
-				>{text}</div>
+				{@attach editableText(() => text)}
+				></div>
 			{:else if node.generate && !isGenerating}
 				<p class="hint">Not generated yet. Press Generate in the toolbar.</p>
 			{:else if canEdit}
