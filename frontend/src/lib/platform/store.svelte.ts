@@ -89,7 +89,8 @@ const goStore: Store = {
 const dexie = async () => (await import('$lib/db')).db;
 
 const dexieStore: Store = {
-	listFolders: async () => (await dexie()).folders.orderBy('name').toArray(),
+	// 'name' isn't an index, so sort here (orderBy('name') throws a SchemaError).
+	listFolders: async () => (await (await dexie()).folders.toArray()).sort((a, b) => a.name.localeCompare(b.name)),
 	addFolder: async (f) => (await (await dexie()).folders.add(f)) as number,
 	renameFolder: async (id, name) => void (await (await dexie()).folders.update(id, { name })),
 	deleteFolder: async (id) => {

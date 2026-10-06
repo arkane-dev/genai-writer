@@ -51,8 +51,6 @@
 	}
 </script>
 
-<!-- ── Render snippets ─────────────────────────────────────────────────────── -->
-
 {#snippet renderNode(node: TreeNode, depth: number)}
 	{#if node.type === 'section'}
 		{@render renderSection(node, depth)}
@@ -62,15 +60,8 @@
 {/snippet}
 
 {#snippet renderSection(node: TreeNode, depth: number)}
-	<div class="mt-7 first:mt-0">
-		<svelte:element
-			this={"h" + Math.min(depth + 2, 6)}
-			class="font-bold text-surface-900 mb-3
-				{depth === 0 ? 'text-xl border-b border-surface-200 pb-1.5' :
-				 depth === 1 ? 'text-lg' :
-				 depth === 2 ? 'text-base' : 'text-sm'}"
-		>{node.label}</svelte:element>
-
+	<div class="sec d{Math.min(depth, 3)}">
+		<svelte:element this={'h' + Math.min(depth + 2, 6)}>{node.label}</svelte:element>
 		{#each node.children as child (child.id)}
 			{@render renderNode(child, depth + 1)}
 		{/each}
@@ -81,113 +72,114 @@
 	{@const text = effectiveContent(node)}
 	{@const canEdit = !isGenerating}
 
-	<div class="mb-3">
+	<div class="block">
 		{#if node.type === 'text_block'}
 			{#if text}
 				<!-- svelte-ignore a11y_interactive_supports_focus -->
 				<div
 					role="textbox"
 					aria-multiline="true"
+					aria-label="{node.label} text"
 					contenteditable={canEdit}
 					spellcheck="true"
-					class="leading-relaxed text-surface-800 outline-none rounded px-1.5 py-0.5 -mx-1.5
-						{canEdit ? 'hover:bg-primary-50/60 focus:bg-white focus:ring-1 focus:ring-primary-300 cursor-text' : 'cursor-default'}
-						whitespace-pre-wrap"
+					class="para"
+					class:editable={canEdit}
 					onblur={(e) => handleTextBlur(node, e.currentTarget as HTMLElement)}
 				>{text}</div>
 			{:else if node.generate && !isGenerating}
-				<p class="text-xs text-surface-300 italic px-1.5">Not generated yet — click Generate in the toolbar.</p>
+				<p class="hint">Not generated yet. Press Generate in the toolbar.</p>
 			{:else if canEdit}
 				<!-- svelte-ignore a11y_interactive_supports_focus -->
 				<div
 					role="textbox"
 					aria-multiline="true"
+					aria-label="{node.label} text"
 					contenteditable="true"
 					spellcheck="true"
-					class="leading-relaxed text-surface-800 outline-none rounded px-1.5 py-0.5 -mx-1.5
-						hover:bg-primary-50/60 focus:bg-white focus:ring-1 focus:ring-primary-300 cursor-text
-						whitespace-pre-wrap min-h-[2rem]"
-					data-placeholder="Empty — click to write…"
+					class="para editable empty"
+					data-placeholder="Empty. Click to write."
 					onblur={(e) => handleTextBlur(node, e.currentTarget as HTMLElement)}
 				></div>
 			{/if}
 
 		{:else if node.type === 'image'}
 			{#if node.imageUrl}
-				<figure class="my-3">
-					<img src={node.imageUrl} alt={node.altText || node.label} class="max-w-full rounded-lg shadow-sm" />
-					{#if node.altText}
-						<figcaption class="text-xs text-center text-surface-400 mt-1 italic">{node.altText}</figcaption>
-					{/if}
+				<figure>
+					<img src={node.imageUrl} alt={node.altText || node.label} />
+					{#if node.altText}<figcaption>{node.altText}</figcaption>{/if}
 				</figure>
 			{:else if text}
-				<p class="text-sm text-surface-500 italic border border-dashed border-surface-200 rounded p-2">[Image: {text}]</p>
+				<p class="hint boxed">[Image: {text}]</p>
 			{/if}
 
 		{:else if node.type === 'code'}
-			{#if text}
-				<pre class="bg-surface-900 text-surface-50 p-3 rounded-lg overflow-x-auto my-2 text-sm font-mono leading-relaxed"><code>{text}</code></pre>
-			{/if}
+			{#if text}<pre><code>{text}</code></pre>{/if}
 
 		{:else if node.type === 'equation'}
-			{#if text}
-				<div class="my-3 py-1 text-center overflow-x-auto">
-					{@html renderEquation(text)}
-				</div>
-			{/if}
+			{#if text}<div class="eq">{@html renderEquation(text)}</div>{/if}
 
 		{:else if node.type === 'table'}
 			{#if text}
 				{@const parsed = parseMarkdownTable(text)}
 				{#if parsed}
-					<div class="my-3 overflow-x-auto">
-						<table class="w-full text-sm border-collapse">
+					<div class="table-wrap">
+						<table>
 							<thead>
-								<tr class="bg-surface-100">
-									{#each parsed.headers as h}
-										<th class="border border-surface-300 px-3 py-1.5 text-left font-semibold text-surface-800">{h}</th>
-									{/each}
-								</tr>
+								<tr>{#each parsed.headers as h, hi (hi)}<th>{h}</th>{/each}</tr>
 							</thead>
 							<tbody>
-								{#each parsed.rows as row, ri}
-									<tr class={ri % 2 === 1 ? 'bg-surface-50' : ''}>
-										{#each parsed.headers as _h, i}
-											<td class="border border-surface-200 px-3 py-1.5 text-surface-700">{row[i] ?? ''}</td>
-										{/each}
-									</tr>
+								{#each parsed.rows as row, ri (ri)}
+									<tr>{#each parsed.headers as _h, i (i)}<td>{row[i] ?? ''}</td>{/each}</tr>
 								{/each}
 							</tbody>
 						</table>
 					</div>
 				{:else}
-					<pre class="text-sm font-mono whitespace-pre-wrap text-surface-700">{text}</pre>
+					<pre><code>{text}</code></pre>
 				{/if}
 			{/if}
 		{/if}
 	</div>
 {/snippet}
 
-<!-- ── Document ────────────────────────────────────────────────────────────── -->
-
-<div class="text-[15px] font-['Georgia',serif]">
-	{#if documentTitle}
-		<h1 class="text-2xl font-bold text-surface-900 mb-6 pb-2 border-b-2 border-surface-200">{documentTitle}</h1>
-	{/if}
-
+<article class="doc nd-paper">
+	{#if documentTitle}<h1>{documentTitle}</h1>{/if}
 	{#if tree.length === 0}
-		<p class="text-surface-400 text-sm italic">Add sections to the tree to see a preview here.</p>
+		<p class="hint">Add sections to the tree to see the preview.</p>
 	{:else}
 		{#each tree as node (node.id)}
 			{@render renderNode(node, 0)}
 		{/each}
 	{/if}
-</div>
+</article>
 
 <style>
-	[contenteditable][data-placeholder]:empty::before {
-		content: attr(data-placeholder);
-		color: #c4c4c4;
-		pointer-events: none;
-	}
+	/* The document on paper (NEONDECK editorial mode). Headings keep the author's case. */
+	.doc { padding: var(--nd-space-8) var(--nd-space-8) var(--nd-space-10); font-size: var(--nd-text-md); line-height: 1.6; }
+	.doc :global(h1), .doc :global(h2), .doc :global(h3), .doc :global(h4), .doc :global(h5), .doc :global(h6) { text-transform: none; letter-spacing: 0; }
+	h1 { margin-bottom: var(--nd-space-6); padding-bottom: var(--nd-space-3); border-bottom: 2px solid var(--nd-ink); font-size: var(--nd-text-3xl); }
+	.sec { margin-top: var(--nd-space-6); }
+	.sec:first-child { margin-top: 0; }
+	.d0 > :global(h2) { padding-bottom: var(--nd-space-1); border-bottom: 1px solid var(--nd-line); font-size: var(--nd-text-xl); }
+	.d1 > :global(h3) { font-size: var(--nd-text-lg); }
+	.d2 > :global(h4), .d3 > :global(*:first-child) { font-size: var(--nd-text-md); }
+	.block { margin-bottom: var(--nd-space-3); }
+	.para { margin: 0 calc(var(--nd-space-2) * -1); padding: var(--nd-space-1) var(--nd-space-2); white-space: pre-wrap; outline: none; }
+	.para.editable { cursor: text; }
+	.para.editable:hover { background: color-mix(in srgb, var(--nd-ink) 5%, transparent); }
+	.para.editable:focus { background: color-mix(in srgb, var(--nd-ink) 4%, transparent); outline: 1px solid var(--nd-ink); }
+	.para.empty { min-height: 2rem; }
+	.para[data-placeholder]:empty::before { content: attr(data-placeholder); color: var(--nd-text-mute); pointer-events: none; }
+	.hint { color: var(--nd-text-mute); font-size: var(--nd-text-sm); }
+	.hint.boxed { padding: var(--nd-space-2); border: 1px solid var(--nd-line); }
+	figure { margin: var(--nd-space-4) 0; }
+	figure img { max-width: 100%; border: 1px solid var(--nd-line); }
+	figcaption { margin-top: var(--nd-space-1); color: var(--nd-text-mute); font-size: var(--nd-text-xs); text-align: center; }
+	/* Code on paper: ink block, cream text (the dark-mode pre colours would vanish here). */
+	pre { background: var(--nd-ink); color: var(--nd-paper); border-left-color: var(--nd-cinnabar); }
+	.eq { overflow-x: auto; padding: var(--nd-space-1) 0; text-align: center; }
+	.table-wrap { overflow-x: auto; margin: var(--nd-space-3) 0; }
+	table { width: 100%; border-collapse: collapse; font-size: var(--nd-text-sm); }
+	th, td { padding: var(--nd-space-1) var(--nd-space-3); border: 1px solid var(--nd-line); text-align: left; }
+	th { border-bottom-color: var(--nd-ink); font-weight: 700; }
 </style>

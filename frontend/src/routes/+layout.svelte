@@ -1,81 +1,90 @@
 <script lang="ts">
-	import './layout.css';
+	import '@cyberpunk-apps/neondeck/styles.css';
 	import favicon from '$lib/assets/favicon.svg';
-	import { page } from '$app/stores';
-	import { AppBar, Navigation, Toast } from '@skeletonlabs/skeleton-svelte';
-	import { SettingsIcon } from '@lucide/svelte';
-	import { toaster } from '$lib/toaster';
+	import { page } from '$app/state';
+	import { AppShell, Tag, Toaster } from '@cyberpunk-apps/neondeck';
+	import WindowControls from '$lib/WindowControls.svelte';
+	import { inWails } from '$lib/platform/env';
+	import { currentDoc } from '$lib/currentDoc.svelte';
+	import { getConfig } from '$lib/config';
 
 	let { children } = $props();
+
+	const nav = [
+		{ label: 'Editor', zh: '写作', href: '#/' },
+		{ label: 'Documents', zh: '文档', href: '#/documents' },
+		{ label: 'Settings', zh: '设置', href: '#/admin' }
+	];
+	// Hash router: page.url.hash holds the route ("#/documents"); "" means the editor.
+	// The preview belongs to the editor, so it lights up Editor too.
+	const current = $derived.by(() => {
+		const h = page.url.hash || '#/';
+		return h.startsWith('#/preview') ? '#/' : h;
+	});
+	// Re-read on navigation so the status bar follows Settings changes.
+	const model = $derived((void page.url.hash, getConfig().model));
 </script>
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<Toast.Group {toaster}>
-	{#snippet children(toast)}
-		<Toast {toast} class="card p-4 flex gap-4 items-start shadow-xl min-w-[280px] max-w-sm">
-			<div class="flex-1">
-				<Toast.Title class="font-semibold text-sm" />
-				<Toast.Description class="text-sm opacity-80" />
-			</div>
-			<Toast.CloseTrigger class="btn-icon preset-tonal-surface btn-sm">✕</Toast.CloseTrigger>
-		</Toast>
+<AppShell brand="GENAI_WRITER_" home="#/" clock={false}>
+	{#snippet actions()}
+		<WindowControls />
 	{/snippet}
-</Toast.Group>
 
-<div class="grid h-screen grid-rows-[auto_1fr_auto]">
-	<!-- Header -->
-	<AppBar class="bg-primary-950 text-surface-50 px-4">
-		<AppBar.Lead>
-			<span class="font-bold text-lg">AI Writer</span>
-		</AppBar.Lead>
-		<AppBar.Trail>
-			<a href="#/admin" class="hover:opacity-75 transition-opacity" aria-label="Settings">
-				<SettingsIcon class="size-5" />
-			</a>
-		</AppBar.Trail>
-	</AppBar>
+	{#snippet sidebar()}
+		<nav class="side" aria-label="App">
+			{#each nav as item (item.href)}
+				<a href={item.href} class:active={current === item.href} aria-current={current === item.href ? 'page' : undefined}>
+					<span class="zh" lang="zh-Hans" aria-hidden="true">{item.zh}</span>{item.label}
+				</a>
+			{/each}
+		</nav>
+	{/snippet}
 
-	<!-- Body columns -->
-	<div class="grid grid-cols-1 md:grid-cols-[auto_1fr] overflow-hidden">
-		<!-- Sidebar -->
-		<Navigation layout="sidebar" class="bg-primary-200 p-4 overflow-y-auto">
-			<Navigation.Menu>
-				<Navigation.Group>
-					<a
-						href="#/"
-						class="block p-2 rounded-md hover:bg-primary-300 transition-colors {($page.url.hash || '#/') === '#/' ? 'bg-primary-300 font-medium' : ''}"
-					>
-						Editor
-					</a>
-					<a
-						href="#/documents"
-						class="block p-2 rounded-md hover:bg-primary-300 transition-colors {($page.url.hash || '#/') === '#/documents' ? 'bg-primary-300 font-medium' : ''}"
-					>
-						Documents
-					</a>
-					<a
-						href="#/admin"
-						class="block p-2 rounded-md hover:bg-primary-300 transition-colors {($page.url.hash || '#/') === '#/admin' ? 'bg-primary-300 font-medium' : ''}"
-					>
-						Settings
-					</a>
-				</Navigation.Group>
-			</Navigation.Menu>
-		</Navigation>
+	{#snippet status()}
+		<span><Tag tone={inWails ? 'success' : 'warning'} dot>{inWails ? 'native' : 'browser'}</Tag></span>
+		<span class="doc">{currentDoc.id ? `doc: ${currentDoc.title || 'untitled'}` : 'no document open'}</span>
+		<span>model: {model || 'none'}</span>
+		<span style="margin-left:auto">root@genai-writer:~#</span>
+	{/snippet}
 
-		<!-- Main content -->
-		<main class="bg-surface-50 p-4 overflow-auto">
-			<div class="w-full lg:max-w-[75%] mx-auto space-y-4">
-				{@render children()}
-			</div>
-		</main>
+	<div class="page">
+		{@render children()}
 	</div>
+</AppShell>
 
-	<!-- Footer -->
-	<footer class="bg-primary-950 text-surface-50 p-4">
-		<p>&copy; 2026</p>
-	</footer>
-</div>
+<Toaster />
+
+<style>
+	/* The top bar is the window's title bar: drag it to move the window. */
+	:global(.nd-shell > .topbar) { --wails-draggable: drag; }
+	:global(.nd-shell > .topbar a, .nd-shell > .topbar button) { --wails-draggable: no-drag; }
+
+	.page {
+		max-width: 80rem;
+		margin: 0 auto;
+		padding: var(--nd-space-6) clamp(1rem, 3vw, 2.5rem) var(--nd-space-10);
+	}
+
+	.side { display: grid; gap: 2px; padding-top: var(--nd-space-4); }
+	.side a {
+		display: flex;
+		align-items: baseline;
+		gap: var(--nd-space-3);
+		padding: var(--nd-space-2) var(--nd-space-3);
+		border-left: 2px solid transparent;
+		color: var(--nd-text-dim);
+		font-family: var(--nd-font-ui);
+		font-weight: 600;
+		letter-spacing: var(--nd-tracking-label);
+		text-decoration: none;
+		text-transform: uppercase;
+	}
+	.side a:hover { background: var(--nd-surface-2); color: var(--nd-text); text-shadow: none; }
+	.side a.active { border-left-color: var(--nd-accent); background: var(--nd-accent-tint); color: var(--nd-accent); }
+	.zh { font-family: var(--nd-font-cjk); font-weight: 900; letter-spacing: 0.04em; }
+	.doc { max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>

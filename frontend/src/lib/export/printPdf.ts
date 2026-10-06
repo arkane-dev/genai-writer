@@ -1,3 +1,4 @@
+import { printHtml } from '$lib/platform/save';
 import { renderToString } from 'katex';
 import type { TreeNode } from '$lib/types';
 
@@ -123,12 +124,7 @@ ${bodyParts.join('\n')}
 </body>
 </html>`;
 
-	const w = window.open('', '_blank');
-	if (!w) {
-		alert('Pop-up blocked. Please allow pop-ups for this page to use PDF export.');
-		return;
+	if (!printHtml(html)) {
+		throw new Error('Pop-up blocked. Allow pop-ups for this page to export a PDF.');
 	}
-	w.document.open();
-	w.document.write(html);
-	w.document.close();
 }

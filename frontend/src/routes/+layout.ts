@@ -5,6 +5,6 @@ import { currentDoc } from '$lib/currentDoc.svelte';
 // so the rest of the app can read it synchronously.
 export async function load() {
 	await loadKV();
-	currentDoc.restore();
+	await currentDoc.restore();
 	return {};
 }

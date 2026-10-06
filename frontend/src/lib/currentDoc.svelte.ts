@@ -1,5 +1,6 @@
 import { browser } from '$app/environment';
 import { kvGet, kvSet } from '$lib/platform/kv';
+import { store } from '$lib/platform/store.svelte';
 
 const LS_KEY = 'ai_writer_current_doc';
 
@@ -15,8 +16,17 @@ let _currentDocId = $state<number | null>(null);
 let _currentDocTitle = $state<string>('');
 
 export const currentDoc = {
-	restore() {
-		_currentDocId = readPersistedId();
+	/** Reopen the last document after a restart. Clears it if it was deleted meanwhile. */
+	async restore() {
+		const id = readPersistedId();
+		if (id === null) return;
+		const doc = await store.getDocument(id);
+		if (!doc) {
+			kvSet(LS_KEY, null);
+			return;
+		}
+		_currentDocId = id;
+		_currentDocTitle = doc.title;
 	},
 
 	get id() { return _currentDocId; },

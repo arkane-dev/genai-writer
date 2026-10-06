@@ -87,7 +87,7 @@ async function nodeToOdt(node: TreeNode, depth: number, images: Map<string, Uint
 	return parts.join('\n');
 }
 
-export async function downloadOdt(tree: TreeNode[], title: string): Promise<void> {
+export async function downloadOdt(tree: TreeNode[], title: string): Promise<string | null> {
 	const images = new Map<string, Uint8Array>();
 	const contentParts: string[] = [];
 
@@ -152,7 +152,7 @@ ${manifestEntries.join('\n')}
 	}
 
 	const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.oasis.opendocument.text' });
-	triggerDownload(blob, `${sanitize(title || 'document')}.odt`);
+	return triggerDownload(blob, `${sanitize(title || 'document')}.odt`);
 }
 
 function sanitize(s: string): string {

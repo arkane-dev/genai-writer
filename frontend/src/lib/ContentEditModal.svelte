@@ -1,17 +1,18 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { FileIcon, XIcon } from '@lucide/svelte';
-	import { FileUpload, Tabs, Dialog } from '@skeletonlabs/skeleton-svelte';
+	import { Dialog, Tabs, Input, Textarea, Select, Checkbox, FileDrop, Button } from '@cyberpunk-apps/neondeck';
 	import { renderToString } from 'katex';
 	import 'katex/dist/katex.min.css';
-	import type { TreeNode } from '$lib/types';
-	import { buildBackgroundContext, ACCEPTED_ATTACHMENT_TYPES } from '$lib/contextExtractor';
+	import type { TreeNode, StoredAttachment } from '$lib/types';
+	import { ACCEPTED_ATTACHMENT_TYPES, extractFileText } from '$lib/contextExtractor';
+	import AttachmentList from '$lib/AttachmentList.svelte';
 	import { generateItem } from '$lib/generation';
 	import { getConfig } from '$lib/config';
 
 	let { sectionId, content, onClose }: { sectionId: string; content: TreeNode; onClose: (data: Partial<TreeNode> | null) => void } = $props();
 
 	let activeTab = $state('details');
+	let open = $state(true);
 	let isGenerating = $state(false);
 	// untrack() marks each read as an intentional one-time initialisation, not a reactive subscription.
 	// The modal always mounts fresh (parent uses {#if editingContent}), so no resync effect is needed.
@@ -37,7 +38,7 @@
 	let localImagePrompt = $state(untrack(() => content.content ?? ''));
 	let imageAltText = $state(untrack(() => content.altText ?? ''));
 	let imageUrlInput = $state(untrack(() => content.imageUrl ?? ''));
-	let uploadedImage = $state<File | null>(untrack(() => content.imageFile ?? null));
+	let uploadedName = $state('');
 
 	// code
 	let codeGenerateMode = $state(untrack(() => content.generate ?? false));
@@ -47,16 +48,48 @@
 	let equationGenerateMode = $state(untrack(() => content.generate ?? false));
 	let localEquation = $state(untrack(() => content.content ?? ''));
 
+	// table
+	let tableGenerateMode = $state(untrack(() => content.generate ?? false));
+	let localTable = $state(untrack(() => content.content ?? ''));
+
+	// attachments (text blocks): text is extracted on upload and kept with the node
+	let attachments = $state<StoredAttachment[]>(untrack(() => [...(content.storedAttachments ?? [])]));
+	let reading = $state(0);
+	async function addFiles(files: File[]) {
+		reading += files.length;
+		for (const f of files) {
+			try {
+				const text = await extractFileText(f);
+				attachments = [...attachments.filter((a) => a.name !== f.name), { name: f.name, text }];
+			} finally {
+				reading--;
+			}
+		}
+	}
+
+	// An uploaded image becomes a data URL, which the library stores once in images/.
+	function addImage(files: File[]) {
+		const f = files[0];
+		if (!f) return;
+		const reader = new FileReader();
+		reader.onload = () => {
+			imageUrlInput = String(reader.result);
+			uploadedName = f.name;
+		};
+		reader.readAsDataURL(f);
+	}
+
 	// Resync if content identity changes while open
 	let currentGenerateMode = $derived(
 		localType === 'text_block' ? textGenerateMode :
 		localType === 'image' ? imageGenerateMode :
 		localType === 'code' ? codeGenerateMode :
-		localType === 'equation' ? equationGenerateMode : false
+		localType === 'equation' ? equationGenerateMode :
+		localType === 'table' ? tableGenerateMode : false
 	);
 
 	const CONTENT_TYPE_LABELS: Record<string, string> = {
-		text_block: 'Text Block', image: 'Image', code: 'Code', equation: 'Equation',
+		text_block: 'text block', image: 'image', code: 'code', equation: 'equation', table: 'table',
 	};
 
 	async function generateNow() {
@@ -80,6 +113,7 @@
 					localType === 'image' ? localImagePrompt :
 					localType === 'code' ? localCode :
 					localType === 'equation' ? localEquation :
+					localType === 'table' ? localTable :
 					localText,
 			};
 
@@ -108,15 +142,19 @@
 				description: localDescription, purpose: localPurpose,
 				key_points: localKeyPoints, conclusion: localConclusion,
 				additional_details: localAdditionalDetails,
-				references: referencesText.split('\n').filter((r) => r.trim()) });
+				references: referencesText.split('\n').filter((r) => r.trim()),
+				storedAttachments: attachments });
 		} else if (localType === 'image') {
 			onClose({ ...base, generate: imageGenerateMode, content: localImagePrompt,
-				altText: imageAltText, imageUrl: imageUrlInput,
-				...(uploadedImage ? { imageFile: uploadedImage } : {}) });
+				altText: imageAltText, imageUrl: imageUrlInput });
 		} else if (localType === 'code') {
 			onClose({ ...base, generate: codeGenerateMode, content: localCode });
 		} else if (localType === 'equation') {
 			onClose({ ...base, generate: equationGenerateMode, content: localEquation });
+		} else if (localType === 'table') {
+			onClose({ ...base, generate: tableGenerateMode, content: localTable,
+				description: localDescription, key_points: localKeyPoints,
+				conclusion: localConclusion, additional_details: localAdditionalDetails });
 		} else {
 			onClose(base);
 		}
@@ -127,342 +165,142 @@
 	}
 </script>
 
-<Dialog
-	open={true}
-	onOpenChange={(e) => { if (!e.open) onClose(null); }}
->
-	<Dialog.Backdrop class="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" />
-	<Dialog.Positioner class="fixed inset-0 z-50 flex items-center justify-center p-4">
-		<Dialog.Content class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
-			<div class="p-6 space-y-4">
-				<div class="flex items-center justify-between">
-					<Dialog.Title class="h2">Edit {CONTENT_TYPE_LABELS[localType] ?? localType}</Dialog.Title>
-					<Dialog.CloseTrigger class="btn-icon preset-outlined"><XIcon class="size-4" /></Dialog.CloseTrigger>
-				</div>
+<Dialog bind:open title="Edit {CONTENT_TYPE_LABELS[localType] ?? localType}" index="03" meta={content.id} size="lg" onclose={() => onClose(null)}>
+	<Tabs label="Content editor" items={[{ value: 'details', label: 'Details' }, { value: 'output', label: 'Output' }]} bind:value={activeTab}>
+		{#snippet children(tab)}
+			{#if tab === 'details'}
+				<div class="form">
+					<div class="two">
+						<Select
+							label="Type"
+							bind:value={localType}
+							options={[
+								{ value: 'text_block', label: 'Text block' },
+								{ value: 'image', label: 'Image' },
+								{ value: 'code', label: 'Code' },
+								{ value: 'equation', label: 'Equation' },
+								{ value: 'table', label: 'Table' }
+							]}
+						/>
+						<Input label="Name" bind:value={localLabel} />
+					</div>
 
-				<Tabs value={activeTab} onValueChange={(e) => { activeTab = e.value; }}>
-					<Tabs.List class="flex border-b border-surface-200 mb-2">
-						<Tabs.Trigger
-							value="details"
-							class="px-4 py-2 text-sm font-medium text-surface-500 hover:text-surface-900 data-[selected]:border-b-2 data-[selected]:border-primary-500 data-[selected]:text-primary-600"
-						>
-							Details
-						</Tabs.Trigger>
-						<Tabs.Trigger
-							value="output"
-							class="px-4 py-2 text-sm font-medium text-surface-500 hover:text-surface-900 data-[selected]:border-b-2 data-[selected]:border-primary-500 data-[selected]:text-primary-600"
-						>
-							Output
-						</Tabs.Trigger>
-					</Tabs.List>
-
-					<Tabs.Content value="details" class="space-y-4 pt-2">
-						<label class="label">
-							<span class="label-text">Type</span>
-							<select class="select w-full" bind:value={localType}>
-								<option value="text_block">Text Block</option>
-								<option value="image">Image</option>
-								<option value="code">Code</option>
-								<option value="equation">Equation</option>
-							</select>
-						</label>
-
-						{#if localType === 'text_block'}
-							<label class="label">
-								<span class="label-text">Title</span>
-								<input class="input" type="text" bind:value={localLabel} />
-							</label>
-
-							<label class="label">
-								<span class="label-text">Content</span>
-								<div class="space-y-3">
-									<div class="flex items-center gap-3 p-3 border border-surface-200 rounded-lg bg-surface-50">
-										<span class="flex-1 text-sm font-medium">Generate text</span>
-										<label class="relative inline-flex items-center cursor-pointer">
-											<input type="checkbox" class="toggle sr-only peer" bind:checked={textGenerateMode} />
-											<div class="w-11 h-6 bg-surface-300 peer-focus:ring-2 peer-focus:ring-primary-300 rounded-full peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500 peer-checked:peer-focus:ring-primary-500"></div>
-										</label>
-									</div>
-									<textarea
-										class="textarea rounded-container"
-										rows="8"
-										bind:value={localText}
-										placeholder={textGenerateMode ? 'Describe the text you want generated...' : 'Enter text content...'}
-									></textarea>
-								</div>
-							</label>
-
-							{#if textGenerateMode}
-								<label class="label">
-									<span class="label-text">Description</span>
-									<textarea class="textarea rounded-container" rows="3" bind:value={localDescription} placeholder="High level description of this block"></textarea>
-								</label>
-
-								<label class="label">
-									<span class="label-text">Purpose</span>
-									<textarea class="textarea rounded-container" rows="2" bind:value={localPurpose} placeholder="What is the purpose of this block"></textarea>
-								</label>
-
-								<label class="label">
-									<span class="label-text">Key Points</span>
-									<textarea class="textarea rounded-container" rows="2" bind:value={localKeyPoints} placeholder="What key points should be covered"></textarea>
-								</label>
-
-								<label class="label">
-									<span class="label-text">Conclusion</span>
-									<textarea class="textarea rounded-container" rows="2" bind:value={localConclusion} placeholder="What conclusion should be drawn"></textarea>
-								</label>
-
-								<label class="label">
-									<span class="label-text">Additional Details</span>
-									<textarea class="textarea rounded-container" rows="2" bind:value={localAdditionalDetails} placeholder="Provide any additional details, directions, or supporting data"></textarea>
-								</label>
-
-								<div class="space-y-2">
-									<div class="flex items-center justify-between">
-										<span class="label-text">Output Length</span>
-										<span class="text-sm font-medium text-primary-600">{localParagraphs} {localParagraphs === 1 ? 'paragraph' : 'paragraphs'}</span>
-									</div>
-									<input
-										type="range"
-										class="w-full accent-primary-500"
-										min="1"
-										max={maxParagraphs}
-										step="1"
-										bind:value={localParagraphs}
-									/>
-									<div class="flex justify-between text-xs text-surface-400">
-										<span>1</span>
-										<span>{maxParagraphs}</span>
-									</div>
-								</div>
-
-								<label class="label">
-									<span class="label-text">References (one per line)</span>
-									<textarea class="textarea rounded-container" rows="3" bind:value={referencesText} placeholder="Enter references (one per line)"></textarea>
-								</label>
-
-								<label class="label">
-									<span class="label-text">Attachments</span>
-									<FileUpload>
-										<FileUpload.Label>Upload your files</FileUpload.Label>
-										<FileUpload.Dropzone>
-											<FileIcon class="size-10" />
-											<span>Select file or drag here.</span>
-											<FileUpload.Trigger>Browse Files</FileUpload.Trigger>
-											<FileUpload.HiddenInput accept={ACCEPTED_ATTACHMENT_TYPES} />
-										</FileUpload.Dropzone>
-										<FileUpload.ItemGroup>
-											<FileUpload.Context>
-												{#snippet children(fileUpload)}
-													{#each fileUpload().acceptedFiles as file (file.name)}
-														<FileUpload.Item {file}>
-															<FileUpload.ItemName>{file.name}</FileUpload.ItemName>
-															<FileUpload.ItemSizeText>{file.size} bytes</FileUpload.ItemSizeText>
-															<FileUpload.ItemDeleteTrigger />
-														</FileUpload.Item>
-													{/each}
-												{/snippet}
-											</FileUpload.Context>
-										</FileUpload.ItemGroup>
-										<FileUpload.ClearTrigger>Clear Files</FileUpload.ClearTrigger>
-									</FileUpload>
-								</label>
-							{/if}
-
-						{:else if localType === 'image'}
-							<div class="space-y-4">
-								<div class="flex items-center gap-3 p-3 border border-surface-200 rounded-lg bg-surface-50">
-									<span class="flex-1 text-sm font-medium">Generate image</span>
-									<label class="relative inline-flex items-center cursor-pointer">
-										<input type="checkbox" class="toggle sr-only peer" bind:checked={imageGenerateMode} />
-										<div class="w-11 h-6 bg-surface-300 peer-focus:ring-2 peer-focus:ring-primary-300 rounded-full peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500 peer-checked:peer-focus:ring-primary-500"></div>
-									</label>
-								</div>
-								<label class="label">
-									<span class="label-text">Image Name</span>
-									<input class="input" type="text" bind:value={localLabel} placeholder="Enter image name..." />
-								</label>
-								{#if imageGenerateMode}
-									<textarea class="textarea rounded-container" rows="6" bind:value={localImagePrompt} placeholder="Describe the image you want generated..."></textarea>
-								{:else}
-									<div class="space-y-4">
-										<label class="label">
-											<span class="label-text">Alt Text</span>
-											<textarea class="textarea rounded-container" rows="2" bind:value={imageAltText} placeholder="Describe the image for accessibility..."></textarea>
-										</label>
-										<div class="space-y-3">
-											<p class="text-sm font-medium">Image Source</p>
-											<div class="space-y-4">
-												<label class="label">
-													<span class="label-text">Image URL</span>
-													<input class="input" type="text" bind:value={imageUrlInput} placeholder="https://example.com/image.jpg" />
-												</label>
-												<div class="flex items-center gap-2 text-sm text-surface-500">
-													<span>— or —</span>
-												</div>
-												<label class="label">
-													<span class="label-text">Upload Image</span>
-													<FileUpload>
-														<FileUpload.Label>Select or drag an image file</FileUpload.Label>
-														<FileUpload.Dropzone>
-															<FileIcon class="size-10" />
-															<span>Select image or drag here.</span>
-															<FileUpload.Trigger>Browse Files</FileUpload.Trigger>
-															<FileUpload.HiddenInput accept="image/*" />
-														</FileUpload.Dropzone>
-														<FileUpload.ItemGroup>
-															<FileUpload.Context>
-																{#snippet children(fileUpload)}
-																	{#each fileUpload().acceptedFiles as file (file.name)}
-																		<FileUpload.Item {file}>
-																			<FileUpload.ItemName>{file.name}</FileUpload.ItemName>
-																			<FileUpload.ItemSizeText>{file.size} bytes</FileUpload.ItemSizeText>
-																			<FileUpload.ItemDeleteTrigger />
-																		</FileUpload.Item>
-																	{/each}
-																{/snippet}
-															</FileUpload.Context>
-														</FileUpload.ItemGroup>
-													</FileUpload>
-												</label>
-												{#if uploadedImage}
-													<div class="border border-surface-200 rounded-lg p-3 bg-surface-50">
-														<p class="text-xs text-surface-500 mb-2">Uploaded: {uploadedImage.name}</p>
-														<p class="text-xs text-surface-400">{uploadedImage.size} bytes</p>
-													</div>
-												{/if}
-											</div>
-										</div>
-									</div>
-								{/if}
+					{#if localType === 'text_block'}
+						<Checkbox label="Generate with AI" hint="Off: the text below is used as written." bind:checked={textGenerateMode} />
+						<Textarea
+							label={textGenerateMode ? 'What to write' : 'Text'}
+							rows={8}
+							bind:value={localText}
+							placeholder={textGenerateMode ? 'Describe the text you want.' : 'Write the text.'}
+						/>
+						{#if textGenerateMode}
+							<Textarea label="Description" rows={3} bind:value={localDescription} placeholder="What this block is about" />
+							<div class="two">
+								<Textarea label="Purpose" rows={2} bind:value={localPurpose} placeholder="What this block is for" />
+								<Textarea label="Key points" rows={2} bind:value={localKeyPoints} placeholder="The points it must cover" />
+								<Textarea label="Conclusion" rows={2} bind:value={localConclusion} placeholder="The conclusion it should reach" />
+								<Textarea label="Additional details" rows={2} bind:value={localAdditionalDetails} placeholder="Directions or data" />
 							</div>
-
-						{:else if localType === 'code'}
-							<div class="space-y-4">
-								<div class="flex items-center gap-3 p-3 border border-surface-200 rounded-lg bg-surface-50">
-									<span class="flex-1 text-sm font-medium">Generate code</span>
-									<label class="relative inline-flex items-center cursor-pointer">
-										<input type="checkbox" class="toggle sr-only peer" bind:checked={codeGenerateMode} />
-										<div class="w-11 h-6 bg-surface-300 peer-focus:ring-2 peer-focus:ring-primary-300 rounded-full peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500 peer-checked:peer-focus:ring-primary-500"></div>
-									</label>
-								</div>
-								<label class="label">
-									<span class="label-text">Code Name</span>
-									<input class="input" type="text" bind:value={localLabel} placeholder="Enter code name..." />
-								</label>
-								{#if codeGenerateMode}
-									<textarea class="textarea rounded-container" rows="6" bind:value={localCode} placeholder="Describe the code you're looking for..."></textarea>
-								{:else}
-									<textarea class="textarea font-mono text-sm bg-surface-100" rows="10" bind:value={localCode} placeholder="Enter code here..."></textarea>
-								{/if}
+							<div class="range">
+								<label class="nd-label" for="paragraphs-{content.id}">Length</label>
+								<input id="paragraphs-{content.id}" type="range" min="1" max={maxParagraphs} step="1" bind:value={localParagraphs} />
+								<span class="nd-mono">{localParagraphs} / {maxParagraphs} paragraph{localParagraphs === 1 ? '' : 's'}</span>
 							</div>
-
-						{:else if localType === 'equation'}
-							<div class="space-y-4">
-								<div class="flex items-center gap-3 p-3 border border-surface-200 rounded-lg bg-surface-50">
-									<span class="flex-1 text-sm font-medium">Generate equation</span>
-									<label class="relative inline-flex items-center cursor-pointer">
-										<input type="checkbox" class="toggle sr-only peer" bind:checked={equationGenerateMode} />
-										<div class="w-11 h-6 bg-surface-300 peer-focus:ring-2 peer-focus:ring-primary-300 rounded-full peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-surface-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500 peer-checked:peer-focus:ring-primary-500"></div>
-									</label>
-								</div>
-								<label class="label">
-									<span class="label-text">Equation Name</span>
-									<input class="input" type="text" bind:value={localLabel} placeholder="Enter equation name..." />
-								</label>
-								{#if equationGenerateMode}
-									<textarea class="textarea rounded-container" rows="6" bind:value={localEquation} placeholder="Describe the equation you're looking for..."></textarea>
-								{:else}
-									<div class="space-y-3">
-										<textarea class="textarea font-mono text-sm bg-surface-100" rows="4" bind:value={localEquation} placeholder="Enter LaTeX syntax (e.g., E = mc^2)..."></textarea>
-										{#if localEquation}
-											<div class="border border-surface-200 rounded-lg p-4 bg-surface-50">
-												<p class="text-xs text-surface-500 mb-2">Preview:</p>
-												<div class="katex-preview text-center">
-													{@html renderToString(localEquation, { throwOnError: false, displayMode: true })}
-												</div>
-											</div>
-										{/if}
-									</div>
-								{/if}
+							<Textarea label="References (one per line)" rows={3} mono bind:value={referencesText} placeholder="https://…" />
+							<div>
+								<FileDrop label="Attach files" hint="md · txt · docx · odt · pdf. Used as background." accept={ACCEPTED_ATTACHMENT_TYPES} multiple onfiles={addFiles} />
+								<AttachmentList bind:attachments {reading} />
 							</div>
 						{/if}
-					</Tabs.Content>
 
-					<Tabs.Content value="output" class="pt-2">
-						{#if currentGenerateMode}
-							{#if content.generated_content}
-								<div class="rounded-lg border border-surface-200 bg-surface-50 p-4">
-									{#if localType === 'equation'}
-										<div class="katex-preview text-center">
-											{@html renderToString(content.generated_content, { throwOnError: false, displayMode: true })}
-										</div>
-									{:else if localType === 'code'}
-										<pre class="overflow-auto text-sm font-mono"><code>{content.generated_content}</code></pre>
-									{:else if localType === 'image'}
-										{#if content.imageUrl}
-											<img src={content.imageUrl} alt={content.altText || localLabel} class="max-w-full rounded-lg" />
-											<p class="text-xs text-surface-400 mt-2 italic">{content.generated_content}</p>
-										{:else}
-											<p class="whitespace-pre-wrap text-sm">{content.generated_content}</p>
-										{/if}
-									{:else}
-										<p class="whitespace-pre-wrap text-sm">{content.generated_content}</p>
-									{/if}
-								</div>
-							{:else}
-								<p class="text-sm text-surface-400 italic p-4">No generated output yet. Click "Generate Now" to generate.</p>
-							{/if}
+					{:else if localType === 'image'}
+						<Checkbox label="Generate with AI" hint="Off: use an image URL or upload a file." bind:checked={imageGenerateMode} />
+						{#if imageGenerateMode}
+							<Textarea label="Image prompt" rows={6} bind:value={localImagePrompt} placeholder="Describe the image you want." />
 						{:else}
-							{#if localType === 'image'}
-								{#if imageUrlInput}
-									<img src={imageUrlInput} alt={imageAltText} class="max-w-full rounded-lg" />
-								{:else if uploadedImage}
-									<div class="rounded-lg border border-surface-200 bg-surface-50 p-4">
-										<p class="text-sm font-medium">{uploadedImage.name}</p>
-										<p class="text-xs text-surface-400">{uploadedImage.size} bytes</p>
-									</div>
-								{:else}
-									<p class="text-sm text-surface-400 italic p-4">(No image set)</p>
-								{/if}
-							{:else if localType === 'code'}
-								{#if localCode}
-									<pre class="rounded-lg bg-surface-100 p-4 text-sm font-mono overflow-auto"><code>{localCode}</code></pre>
-								{:else}
-									<p class="text-sm text-surface-400 italic p-4">(No code entered)</p>
-								{/if}
-							{:else if localType === 'equation'}
-								{#if localEquation}
-									<div class="rounded-lg border border-surface-200 bg-surface-50 p-4 text-center">
-										{@html renderToString(localEquation, { throwOnError: false, displayMode: true })}
-									</div>
-								{:else}
-									<p class="text-sm text-surface-400 italic p-4">(No equation entered)</p>
-								{/if}
-							{:else}
-								{#if localText}
-									<div class="rounded-lg border border-surface-200 bg-surface-50 p-4">
-										<p class="whitespace-pre-wrap text-sm">{localText}</p>
-									</div>
-								{:else}
-									<p class="text-sm text-surface-400 italic p-4">(No content entered)</p>
-								{/if}
+							<Textarea label="Alt text" rows={2} bind:value={imageAltText} placeholder="Describe the image for people who can't see it." />
+							<Input label="Image URL" bind:value={imageUrlInput} placeholder="https://…" />
+							<p class="nd-meta or">// or</p>
+							<FileDrop label="Upload an image" hint={uploadedName ? `loaded: ${uploadedName}` : 'png · jpg · gif · webp · svg'} accept="image/*" onfiles={addImage} />
+						{/if}
+
+					{:else if localType === 'code'}
+						<Checkbox label="Generate with AI" hint="Off: the code below is used as written." bind:checked={codeGenerateMode} />
+						<Textarea
+							label={codeGenerateMode ? 'What the code should do' : 'Code'}
+							rows={codeGenerateMode ? 6 : 12}
+							mono={!codeGenerateMode}
+							bind:value={localCode}
+							placeholder={codeGenerateMode ? 'Describe the code you want.' : '// code'}
+						/>
+
+					{:else if localType === 'equation'}
+						<Checkbox label="Generate with AI" hint="Off: write LaTeX below." bind:checked={equationGenerateMode} />
+						{#if equationGenerateMode}
+							<Textarea label="What the equation should show" rows={6} bind:value={localEquation} placeholder="Describe the equation you want." />
+						{:else}
+							<Textarea label="LaTeX" rows={4} mono bind:value={localEquation} placeholder="E = mc^2" />
+							{#if localEquation}
+								<div class="eq paper nd-paper">
+									{@html renderToString(localEquation, { throwOnError: false, displayMode: true })}
+								</div>
 							{/if}
 						{/if}
-					</Tabs.Content>
-				</Tabs>
 
-				<div class="flex justify-end gap-2 pt-4 border-t border-surface-200">
-					<button class="btn preset-outlined" onclick={handleCancel}>Cancel</button>
-					{#if currentGenerateMode}
-						<button class="btn preset-filled-secondary-500" onclick={generateNow} disabled={isGenerating}>
-							{isGenerating ? 'Generating...' : 'Generate Now'}
-						</button>
+					{:else if localType === 'table'}
+						<Checkbox label="Generate with AI" hint="Off: write a Markdown table below." bind:checked={tableGenerateMode} />
+						{#if tableGenerateMode}
+							<Textarea label="Description" rows={3} bind:value={localDescription} placeholder="What the table shows" />
+							<Textarea label="Columns or data" rows={2} bind:value={localKeyPoints} placeholder="Which columns and rows to include" />
+							<div class="two">
+								<Textarea label="Notes" rows={2} bind:value={localConclusion} placeholder="Anything to note" />
+								<Textarea label="Additional details" rows={2} bind:value={localAdditionalDetails} placeholder="Directions or data" />
+							</div>
+						{:else}
+							<Textarea label="Markdown table" rows={8} mono bind:value={localTable} placeholder={'| col | col |\n| --- | --- |\n| val | val |'} />
+						{/if}
 					{/if}
-					<button class="btn preset-filled-primary-500" onclick={handleSave}>Save</button>
 				</div>
-			</div>
-		</Dialog.Content>
-	</Dialog.Positioner>
+
+			{:else}
+				{@const out = currentGenerateMode ? content.generated_content : null}
+				{#if currentGenerateMode && !out}
+					<p class="nd-meta">&gt; no output yet. Press Generate now.</p>
+				{:else if localType === 'equation' && (out || localEquation)}
+					<div class="eq paper nd-paper">{@html renderToString(out || localEquation, { throwOnError: false, displayMode: true })}</div>
+				{:else if localType === 'code' && (out || localCode)}
+					<pre><code>{out || localCode}</code></pre>
+				{:else if localType === 'image' && (currentGenerateMode ? content.imageUrl : imageUrlInput)}
+					<img class="img" src={currentGenerateMode ? content.imageUrl : imageUrlInput} alt={(currentGenerateMode ? content.altText : imageAltText) || localLabel} />
+					{#if out}<p class="nd-meta">{out}</p>{/if}
+				{:else if localType === 'table' && (out || localTable)}
+					<pre><code>{out || localTable}</code></pre>
+				{:else if out || localText}
+					<p class="prose">{out || localText}</p>
+				{:else}
+					<p class="nd-meta">&gt; nothing here yet</p>
+				{/if}
+			{/if}
+		{/snippet}
+	</Tabs>
+	{#snippet footer()}
+		<Button variant="ghost" onclick={handleCancel}>Cancel</Button>
+		{#if currentGenerateMode}
+			<Button variant="outline" onclick={generateNow} disabled={isGenerating}>{isGenerating ? 'Generating…' : 'Generate now'}</Button>
+		{/if}
+		<Button onclick={handleSave}>Save</Button>
+	{/snippet}
 </Dialog>
+
+<style>
+	.form { display: flex; flex-direction: column; gap: var(--nd-space-4); }
+	.two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--nd-space-4); }
+	.range { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--nd-space-3); }
+	.range input { accent-color: var(--nd-accent); }
+	.or { margin: 0; }
+	.paper { padding: var(--nd-space-4); }
+	.eq { overflow-x: auto; text-align: center; }
+	.img { max-width: 100%; border: 1px solid var(--nd-line); }
+	.prose { white-space: pre-wrap; max-width: none; }
+	@media (max-width: 720px) { .two { grid-template-columns: 1fr; } }
+</style>

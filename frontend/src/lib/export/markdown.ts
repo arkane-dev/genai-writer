@@ -1,3 +1,4 @@
+import { saveFile } from '$lib/platform/save';
 import JSZip from 'jszip';
 import type { TreeNode } from '$lib/types';
 
@@ -65,7 +66,7 @@ async function collectImages(
 	return lines.join('\n');
 }
 
-export async function downloadMarkdownZip(tree: TreeNode[], title: string): Promise<void> {
+export async function downloadMarkdownZip(tree: TreeNode[], title: string): Promise<string | null> {
 	const zip = new JSZip();
 	const images = new Map<string, Uint8Array>();
 
@@ -83,18 +84,14 @@ export async function downloadMarkdownZip(tree: TreeNode[], title: string): Prom
 	}
 
 	const blob = await zip.generateAsync({ type: 'blob' });
-	triggerDownload(blob, `${sanitizeFilename(title || 'document')}.zip`);
+	return triggerDownload(blob, `${sanitizeFilename(title || 'document')}.zip`);
 }
 
 function sanitizeFilename(name: string): string {
 	return name.replace(/[^a-z0-9_\-. ]/gi, '_').trim() || 'document';
 }
 
-export function triggerDownload(blob: Blob, filename: string): void {
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = filename;
-	a.click();
-	setTimeout(() => URL.revokeObjectURL(url), 10000);
+// Desktop: native Save dialog. Browser: download. Null means the user cancelled.
+export function triggerDownload(blob: Blob, filename: string): Promise<string | null> {
+	return saveFile(blob, filename);
 }

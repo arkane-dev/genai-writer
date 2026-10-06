@@ -328,18 +328,20 @@ export const CONTENT_TYPE_LABELS: Record<string, string> = {
 	table: 'Table',
 };
 
+// Mono glyphs, not emoji (NEONDECK rule). Decorative: the label beside them carries the meaning.
 export const CONTENT_TYPE_ICONS: Record<string, string> = {
 	text_block: '¶',
-	image: '🖼️',
+	image: 'IMG',
 	code: '</>',
-	equation: 'Eq',
+	equation: 'ƒx',
 	table: '⊞',
 };
 
-export const CONTENT_TYPE_TAG_CLASSES: Record<string, string> = {
-	text_block: 'bg-yellow-100 text-yellow-700',
-	image: 'bg-green-100 text-green-700',
-	code: 'bg-purple-100 text-purple-700',
-	equation: 'bg-pink-100 text-pink-700',
-	table: 'bg-blue-100 text-blue-700',
+// NEONDECK Tag tones per content type.
+export const CONTENT_TYPE_TONES: Record<string, 'accent' | 'accent-2' | 'success' | 'info' | 'warning' | 'danger' | 'muted'> = {
+	text_block: 'warning',
+	image: 'success',
+	code: 'accent',
+	equation: 'accent-2',
+	table: 'muted',
 };

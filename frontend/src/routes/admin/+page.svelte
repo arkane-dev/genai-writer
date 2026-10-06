@@ -1,12 +1,24 @@
 <script lang="ts">
 	import { getConfig, saveConfig, type ApiConfig } from '$lib/config';
-	import { CheckIcon, XIcon, Trash2Icon, ImageIcon, ChevronDownIcon } from '@lucide/svelte';
+	import { onMount } from 'svelte';
+	import { Panel, Input, Button, Readout, SectionHeader } from '@cyberpunk-apps/neondeck';
+	import { inWails } from '$lib/platform/env';
+	import * as GoStore from '$lib/wailsjs/go/main/Store';
+	import * as GoKV from '$lib/wailsjs/go/main/KV';
 	import { store } from '$lib/platform/store.svelte';
 	import { netFetch } from '$lib/platform/net';
 	import { currentDoc } from '$lib/currentDoc.svelte';
 	import { swarmUITestConnection } from '$lib/swarmui';
 
 	let config = $state<ApiConfig>(getConfig());
+
+	// Desktop only: where the library and the prefs file live.
+	let libraryPath = $state('');
+	let prefsPath = $state('');
+	onMount(async () => {
+		if (!inWails) return;
+		[libraryPath, prefsPath] = await Promise.all([GoStore.Root(), GoKV.Path()]);
+	});
 	let saveMessage = $state<{ type: 'success' | 'error'; text: string } | null>(null);
 
 	// ── Text API test + model discovery ───────────────────────────────────
@@ -139,230 +151,144 @@
 	}
 </script>
 
-<div class="min-h-screen p-8">
-	<div class="mb-8 flex flex-col gap-2">
-		<h1 class="h1">Settings</h1>
-		<p class="text-primary-600">Configure AI endpoints and generation options</p>
-	</div>
+<svelte:head>
+	<title>Settings · GenAI Writer</title>
+</svelte:head>
 
-	<div class="max-w-2xl space-y-8">
+<SectionHeader index="01" zh="设置" title="Settings" meta="models · images · library" />
 
-		<!-- ── Text generation ──────────────────────────────────────────────── -->
-		<section class="space-y-4">
-			<h2 class="text-base font-semibold border-b border-surface-200 pb-2">Text Generation (OpenAI-compatible)</h2>
-
-			<label class="label">
-				<span class="label-text">API URL</span>
-				<input class="input" type="url" placeholder="https://api.openai.com/v1" bind:value={config.baseURL} />
-				<span class="label-text-alt">Base URL for your OpenAI-compatible API</span>
-			</label>
-
-			<label class="label">
-				<span class="label-text">API Key</span>
-				<input class="input" type="password" placeholder="sk-..." bind:value={config.apiKey} />
-				<span class="label-text-alt">Stored locally in your browser</span>
-			</label>
-
-			<label class="label">
-				<span class="label-text">Model Name</span>
-				<div class="flex gap-2">
-					<input class="input flex-1" type="text" placeholder="gpt-4o, gemma3:27b, etc." bind:value={config.model} />
-					<div class="relative">
-						<button
-							class="btn preset-outlined flex items-center gap-1 whitespace-nowrap"
-							onclick={handleFetchModels}
-							disabled={testing}
-							title="Fetch available models from the API"
-						>
-							<ChevronDownIcon class="w-4 h-4" />
-							{testing ? 'Fetching…' : 'Browse'}
-						</button>
-						{#if showModelPicker && availableModels.length > 0}
-							<!-- svelte-ignore a11y_interactive_supports_focus -->
-							<!-- svelte-ignore a11y_click_events_have_key_events -->
-							<div class="fixed inset-0 z-10" role="button" onclick={() => { showModelPicker = false; }}></div>
-							<div class="absolute right-0 top-full mt-1 z-20 bg-white border border-surface-200 rounded-lg shadow-lg w-72 max-h-64 overflow-y-auto">
-								<p class="text-[10px] font-semibold text-surface-400 uppercase tracking-wide px-3 pt-2 pb-1">{availableModels.length} models available</p>
-								{#each availableModels as id}
-									<button
-										class="w-full text-left px-3 py-2 text-sm hover:bg-surface-50 font-mono truncate {config.model === id ? 'text-primary-600 font-semibold bg-primary-50' : ''}"
-										onclick={() => selectModel(id)}
-									>{id}</button>
-								{/each}
-							</div>
-						{/if}
-					</div>
-				</div>
-				<span class="label-text-alt">Model identifier for text generation — use Browse to pick from available models</span>
-			</label>
-
-			<div class="space-y-2">
-				<div class="flex items-center justify-between">
-					<span class="label-text">Maximum Output Length</span>
-					<span class="text-sm font-medium text-primary-600">{config.maxOutputParagraphs} {config.maxOutputParagraphs === 1 ? 'paragraph' : 'paragraphs'}</span>
-				</div>
-				<input
-					type="range"
-					class="w-full accent-primary-500"
-					min="1"
-					max="20"
-					step="1"
-					bind:value={config.maxOutputParagraphs}
-				/>
-				<div class="flex justify-between text-xs text-surface-400">
-					<span>1</span>
-					<span>20</span>
-				</div>
-				<p class="label-text-alt">Sets the maximum number of paragraphs selectable per text block</p>
-			</div>
-
-			{#if testResult}
-				<div class="rounded-md p-3 {testResult.success ? 'bg-success-50 text-success-700' : 'bg-error-50 text-error-700'}">
-					<span class="text-sm">{testResult.message}</span>
-				</div>
-			{/if}
-
-			<div class="flex flex-wrap gap-2">
-				<button class="btn preset-outlined" onclick={handleTest} disabled={testing}>
-					{testing ? 'Testing…' : 'Test Connection'}
-				</button>
-			</div>
-			<p class="text-xs text-surface-400">Tip: use the <strong>Browse</strong> button next to Model Name to fetch available models directly from the API.</p>
-		</section>
-
-		<!-- ── Image generation ─────────────────────────────────────────────── -->
-		<section class="space-y-4">
-			<div class="flex items-center gap-2 border-b border-surface-200 pb-2">
-				<ImageIcon class="size-4 text-surface-500" />
-				<h2 class="text-base font-semibold">Image Generation</h2>
-			</div>
-			<p class="text-sm text-surface-500">
-				Configure an image generation model. If <strong>SwarmUI Base URL</strong> is set it takes priority; otherwise the <strong>OpenAI-compatible images API</strong> is used when a model is configured.
-			</p>
-
-			<!-- OpenAI-compatible images API -->
-			<h3 class="text-sm font-medium text-surface-600">OpenAI-compatible Images API</h3>
-
-			<label class="label">
-				<span class="label-text">Image Model</span>
-				<input class="input" type="text" placeholder="dall-e-3, flux, etc." bind:value={config.imageModel} />
-				<span class="label-text-alt">Model for image generation. Required to use the OpenAI images API path.</span>
-			</label>
-
-			<label class="label">
-				<span class="label-text">Image API URL <span class="text-surface-400">(optional)</span></span>
-				<input class="input" type="url" placeholder="Leave blank to reuse the text API URL" bind:value={config.imageApiBaseURL} />
-				<span class="label-text-alt">Override base URL for the image API. Defaults to the text API URL above.</span>
-			</label>
-
-			<label class="label">
-				<span class="label-text">Image API Key <span class="text-surface-400">(optional)</span></span>
-				<input class="input" type="password" placeholder="Leave blank to reuse the text API key" bind:value={config.imageApiKey} />
-				<span class="label-text-alt">Override API key for the image API. Defaults to the text API key above.</span>
-			</label>
-
-			<div class="grid grid-cols-2 gap-4">
-				<label class="label">
-					<span class="label-text">Width (px)</span>
-					<input class="input" type="number" min="64" max="4096" step="64" bind:value={config.imageWidth} />
-				</label>
-				<label class="label">
-					<span class="label-text">Height (px)</span>
-					<input class="input" type="number" min="64" max="4096" step="64" bind:value={config.imageHeight} />
-				</label>
-			</div>
-
-			<!-- SwarmUI -->
-			<h3 class="text-sm font-medium text-surface-600 pt-2">SwarmUI <span class="text-surface-400 font-normal">(optional — overrides images API when set)</span></h3>
-			<p class="text-sm text-surface-500">
-				Connects to a local <a href="https://github.com/mcmonkeyprojects/SwarmUI" class="underline hover:text-primary-600" target="_blank" rel="noopener">SwarmUI</a> instance.
-				A session is obtained automatically before each generation.
-			</p>
-
-			<label class="label">
-				<span class="label-text">SwarmUI Base URL</span>
-				<input class="input" type="text" placeholder="Leave blank to disable SwarmUI" bind:value={config.imageBaseURL} />
-				<span class="label-text-alt">Use <code class="text-xs bg-surface-100 px-1 rounded">/swarm</code> (proxied via Vite dev server) to avoid CORS. Use <code class="text-xs bg-surface-100 px-1 rounded">http://localhost:7801</code> only if SwarmUI has CORS headers enabled.</span>
-			</label>
-
-			<label class="label">
-				<span class="label-text">Swarm Token <span class="text-surface-400">(optional)</span></span>
-				<input class="input" type="password" placeholder="Leave blank for unauthenticated local instances" bind:value={config.imageSwarmToken} />
-				<span class="label-text-alt">Required only if SwarmUI is configured with account authentication.</span>
-			</label>
-
-			<label class="label">
-				<span class="label-text">Generation Endpoint</span>
-				<input class="input" type="text" placeholder="/API/GenerateText2Image" bind:value={config.imageEndpoint} />
-				<span class="label-text-alt">SwarmUI generation route (rarely needs changing)</span>
-			</label>
-
-			<div class="grid grid-cols-2 gap-4">
-				<label class="label">
-					<span class="label-text">Steps</span>
-					<input class="input" type="number" min="1" max="150" bind:value={config.imageSteps} />
-				</label>
-				<label class="label">
-					<span class="label-text">CFG Scale</span>
-					<input class="input" type="number" min="1" max="30" step="0.5" bind:value={config.imageCfgScale} />
-				</label>
-			</div>
-
-			{#if imageTestResult}
-				<div class="rounded-md p-3 {imageTestResult.success ? 'bg-success-50 text-success-700' : 'bg-error-50 text-error-700'}">
-					<span class="text-sm">{imageTestResult.message}</span>
-				</div>
-			{/if}
-
-			<div class="flex flex-wrap gap-2">
-				<button class="btn preset-outlined" onclick={handleTestImage} disabled={testingImage}>
-					{testingImage ? 'Testing…' : 'Test SwarmUI Connection'}
-				</button>
-			</div>
-		</section>
-
-		<!-- ── Save / status ────────────────────────────────────────────────── -->
-		{#if saveMessage}
-			<div class="rounded-md p-3 flex items-center gap-2 {saveMessage.type === 'success' ? 'bg-success-50 text-success-700' : 'bg-error-50 text-error-700'}">
-				{#if saveMessage.type === 'success'}<CheckIcon class="size-5" />{:else}<XIcon class="size-5" />{/if}
-				<span>{saveMessage.text}</span>
-			</div>
-		{/if}
-
-		<div class="flex flex-wrap gap-2">
-			<button class="btn preset-filled-primary-500" onclick={handleSave}>Save Configuration</button>
-			<button class="btn preset-outlined-warning-500" onclick={resetToDefaults}>Reset to Defaults</button>
-		</div>
-
-		<!-- ── Document data ─────────────────────────────────────────────────── -->
-		<div class="pt-6 border-t border-surface-200 space-y-4">
-			<div>
-				<h2 class="text-base font-semibold mb-1">Document History</h2>
-				<p class="text-sm text-surface-500 mb-3">
-					{#if currentDoc.id}
-						Delete all snapshots and undo history for <strong>"{currentDoc.title || 'current document'}"</strong>. The document will start with a blank tree on next open.
-					{:else}
-						No document is currently open. Open a document in the editor first to clear its history.
+<div class="grid">
+	<Panel title="Text model" index="01" meta="openai-compatible" class="span-2">
+		<div class="form">
+			<Input label="API URL" type="url" placeholder="https://api.openai.com/v1" bind:value={config.baseURL} hint="Any OpenAI-compatible endpoint: OpenAI, OpenRouter, Ollama, vLLM." />
+			<Input label="API key" type="password" placeholder="sk-…" bind:value={config.apiKey} hint={inWails ? `Saved in ${prefsPath || 'your config folder'}, readable only by you.` : 'Saved in this browser.'} />
+			<div class="model">
+				<div class="grow"><Input label="Model" placeholder="gpt-4o, gemma3:27b, …" bind:value={config.model} /></div>
+				<div class="menu-anchor">
+					<Button variant="outline" onclick={handleFetchModels} disabled={testing} aria-expanded={showModelPicker} title="List the models this API offers">
+						{testing ? 'Fetching…' : 'Browse ▾'}
+					</Button>
+					{#if showModelPicker && availableModels.length > 0}
+						<!-- svelte-ignore a11y_click_events_have_key_events -->
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
+						<div class="scrim" onclick={() => { showModelPicker = false; }}></div>
+						<div class="menu">
+							<p class="nd-label menu-head">{availableModels.length} models</p>
+							{#each availableModels as id (id)}
+								<button class="item" class:on={config.model === id} onclick={() => selectModel(id)}>{id}</button>
+							{/each}
+						</div>
 					{/if}
-				</p>
-
-				{#if clearMessage}
-					<div class="rounded-md p-3 flex items-center gap-2 mb-3 {clearMessage.type === 'success' ? 'bg-success-50 text-success-700' : 'bg-error-50 text-error-700'}">
-						{#if clearMessage.type === 'success'}<CheckIcon class="size-4 shrink-0" />{:else}<XIcon class="size-4 shrink-0" />{/if}
-						<span class="text-sm">{clearMessage.text}</span>
-					</div>
-				{/if}
-
-				<button
-					class="btn {clearConfirm ? 'preset-filled-error-500' : 'preset-outlined-error-500'} flex items-center gap-2"
-					onclick={handleClearDocument}
-				>
-					<Trash2Icon class="size-4" />
-					{clearConfirm ? 'Click again to confirm' : 'Clear document data'}
-				</button>
+				</div>
 			</div>
-
-			<a href="#/" class="btn preset-outlined-primary-500">← Back to Editor</a>
+			<div class="range">
+				<label class="nd-label" for="max-paragraphs">Max length</label>
+				<input id="max-paragraphs" type="range" min="1" max="20" step="1" bind:value={config.maxOutputParagraphs} />
+				<span class="nd-mono">{config.maxOutputParagraphs} paragraph{config.maxOutputParagraphs === 1 ? '' : 's'}</span>
+			</div>
+			<p class="nd-meta">The most paragraphs a text block can ask for.</p>
+			<div class="row">
+				<Button variant="outline" onclick={handleTest} disabled={testing}>{testing ? 'Testing…' : 'Test connection'}</Button>
+				{#if testResult}<p class="result" class:bad={!testResult.success} role="status">&gt; {testResult.message}</p>{/if}
+			</div>
 		</div>
-	</div>
+	</Panel>
+
+	<Panel title="Library" index="02" meta={inWails ? 'on disk' : 'in browser'}>
+		{#if inWails}
+			<div class="paths">
+				<Readout size="sm" label="Documents" value={libraryPath || '…'} />
+				<Readout size="sm" label="Settings" value={prefsPath || '…'} />
+			</div>
+		{:else}
+			<p class="nd-meta">&gt; browser build: documents live in IndexedDB</p>
+		{/if}
+		<div class="danger">
+			<p class="nd-label">Clear history</p>
+			<p class="small">
+				{#if currentDoc.id}
+					Deletes every snapshot of “{currentDoc.title || 'this document'}”. It reopens with an empty tree.
+				{:else}
+					Open a document first.
+				{/if}
+			</p>
+			<Button variant={clearConfirm ? 'danger' : 'outline'} accent="red" onclick={handleClearDocument} disabled={!currentDoc.id}>
+				{clearConfirm ? 'Click again to confirm' : 'Clear history'}
+			</Button>
+			{#if clearMessage}<p class="result" class:bad={clearMessage.type === 'error'} role="status">&gt; {clearMessage.text}</p>{/if}
+		</div>
+	</Panel>
+
+	<Panel title="Images" index="03" meta="openai images api" class="span-2">
+		<p class="small">Used when an image model is set. SwarmUI takes priority if its URL is set.</p>
+		<div class="form">
+			<Input label="Image model" placeholder="dall-e-3, flux, …" bind:value={config.imageModel} />
+			<div class="two">
+				<Input label="Image API URL (optional)" type="url" placeholder="Same as text API" bind:value={config.imageApiBaseURL} />
+				<Input label="Image API key (optional)" type="password" placeholder="Same as text API" bind:value={config.imageApiKey} />
+				<Input label="Width (px)" type="number" min="64" max="4096" step="64" bind:value={config.imageWidth} />
+				<Input label="Height (px)" type="number" min="64" max="4096" step="64" bind:value={config.imageHeight} />
+			</div>
+		</div>
+	</Panel>
+
+	<Panel title="SwarmUI" index="04" meta="local image server">
+		<p class="small">Connects to a <a href="https://github.com/mcmonkeyprojects/SwarmUI" target="_blank" rel="noopener">SwarmUI</a> server. It gets a session before each image.</p>
+		<div class="form">
+			<Input
+				label="Base URL"
+				placeholder="Blank turns SwarmUI off"
+				bind:value={config.imageBaseURL}
+				hint={inWails ? 'Use the real address, e.g. http://localhost:7801.' : 'Browser dev: /swarm goes through the Vite proxy.'}
+			/>
+			<Input label="Token (optional)" type="password" placeholder="Only if SwarmUI uses accounts" bind:value={config.imageSwarmToken} />
+			<Input label="Endpoint" placeholder="/API/GenerateText2Image" bind:value={config.imageEndpoint} />
+			<div class="two">
+				<Input label="Steps" type="number" min="1" max="150" bind:value={config.imageSteps} />
+				<Input label="CFG scale" type="number" min="1" max="30" step="0.5" bind:value={config.imageCfgScale} />
+			</div>
+			<div class="row">
+				<Button variant="outline" onclick={handleTestImage} disabled={testingImage}>{testingImage ? 'Testing…' : 'Test SwarmUI'}</Button>
+			</div>
+			{#if imageTestResult}<p class="result" class:bad={!imageTestResult.success} role="status">&gt; {imageTestResult.message}</p>{/if}
+		</div>
+	</Panel>
 </div>
+
+<div class="save">
+	{#if saveMessage}<p class="result" class:bad={saveMessage.type === 'error'} role="status">&gt; {saveMessage.text}</p>{/if}
+	<Button variant="ghost" onclick={resetToDefaults}>Reset to defaults</Button>
+	<Button size="lg" onclick={handleSave}>Save settings</Button>
+</div>
+
+<style>
+	.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--nd-space-5); }
+	.grid :global(.span-2) { grid-column: span 2; }
+	.form { display: flex; flex-direction: column; gap: var(--nd-space-4); }
+	.two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--nd-space-4); }
+	.model { display: flex; align-items: flex-end; gap: var(--nd-space-2); }
+	.grow { flex: 1; min-width: 0; }
+	.range { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--nd-space-3); }
+	.range input { accent-color: var(--nd-accent); }
+	.row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--nd-space-3); }
+	.small { color: var(--nd-text-dim); font-size: var(--nd-text-sm); }
+	.result { margin: 0; font-family: var(--nd-font-mono); font-size: var(--nd-text-xs); color: var(--nd-success); }
+	.result.bad { color: var(--nd-danger); }
+	.paths { display: flex; flex-direction: column; gap: var(--nd-space-3); overflow-wrap: anywhere; }
+	.danger { display: flex; flex-direction: column; align-items: flex-start; gap: var(--nd-space-2); margin-top: var(--nd-space-5); padding-top: var(--nd-space-4); border-top: 1px solid var(--nd-line); }
+	.danger .small, .danger .nd-label { margin: 0; }
+	.save { position: sticky; bottom: var(--nd-statusbar-h); display: flex; justify-content: flex-end; align-items: center; gap: var(--nd-space-3); margin-top: var(--nd-space-6); padding: var(--nd-space-3) 0; border-top: 1px solid var(--nd-line); background: var(--nd-bg); }
+
+	.menu-anchor { position: relative; }
+	.scrim { position: fixed; inset: 0; z-index: 10; }
+	.menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; width: 18rem; max-height: 16rem; overflow-y: auto; border: 1px solid var(--nd-line-strong); background: var(--nd-surface-3); }
+	.menu-head { margin: 0; padding: var(--nd-space-2) var(--nd-space-3) var(--nd-space-1); font-size: var(--nd-text-2xs); }
+	.item { display: block; width: 100%; padding: var(--nd-space-2) var(--nd-space-3); overflow: hidden; border: 0; background: transparent; font-family: var(--nd-font-mono); font-size: var(--nd-text-sm); text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+	.item:hover, .item:focus-visible { background: var(--nd-accent-tint); }
+	.item.on { color: var(--nd-accent); }
+
+	@media (max-width: 1100px) {
+		.grid { grid-template-columns: 1fr; }
+		.grid :global(.span-2) { grid-column: auto; }
+	}
+</style>

@@ -13,7 +13,8 @@
 		BookmarkPlusIcon,
 	} from '@lucide/svelte';
 	import TreeNodeSelf from './TreeNode.svelte';
-	import { CONTENT_TYPE_ICONS, CONTENT_TYPE_TAG_CLASSES, CONTENT_TYPE_LABELS } from '$lib/generation';
+	import { CONTENT_TYPE_ICONS, CONTENT_TYPE_TONES, CONTENT_TYPE_LABELS } from '$lib/generation';
+	import { Tag } from '@cyberpunk-apps/neondeck';
 	import { dragState } from '$lib/dragState.svelte';
 
 	interface Props {
@@ -56,7 +57,6 @@
 		onSaveSnippet,
 	}: Props = $props();
 
-	let hovered = $state(false);
 	let dropZone = $state<'before' | 'after' | 'inside' | null>(null);
 	let nodeEl = $state<HTMLDivElement | undefined>(undefined);
 	let headerEl = $state<HTMLDivElement | undefined>(undefined);
@@ -72,11 +72,11 @@
 	let touchDragging = false;
 
 	const CONTENT_TYPES: [string, string][] = [
-		['text_block', '¶ Text Block'],
-		['image', '🖼 Image'],
-		['code', '</> Code'],
-		['equation', 'Eq Equation'],
-		['table', '⊞ Table'],
+		['text_block', 'Text'],
+		['image', 'Image'],
+		['code', 'Code'],
+		['equation', 'Equation'],
+		['table', 'Table'],
 	];
 
 	const INTERACTIVE = 'button, [contenteditable], input, textarea, select, a';
@@ -232,32 +232,26 @@
 		}
 	}
 
-	const btnBase = 'bg-transparent border-0 cursor-pointer text-surface-400 px-1 py-[2px] rounded leading-none hover:bg-surface-100 hover:text-surface-700 flex items-center';
 </script>
 
-<div class="relative" data-tree-node-id={node.id} data-node-is-section={isSection(node) ? 'true' : 'false'}>
-	{#if effectiveDropZone === 'before'}
-		<div class="absolute inset-x-0 -top-[3px] h-[3px] bg-primary-500 rounded z-10 pointer-events-none"></div>
-	{/if}
+<div class="node-wrap" data-tree-node-id={node.id} data-node-is-section={isSection(node) ? 'true' : 'false'}>
+	{#if effectiveDropZone === 'before'}<div class="drop-line before"></div>{/if}
 
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		bind:this={nodeEl}
 		draggable="true"
-		class="border border-surface-200 rounded-md transition-all {isSection(node) ? 'bg-surface-50' : 'bg-white'}"
-		class:outline={effectiveDropZone === 'inside'}
-		class:outline-2={effectiveDropZone === 'inside'}
-		class:outline-primary-500={effectiveDropZone === 'inside'}
+		class="node"
+		class:section={isSection(node)}
+		class:drop-inside={effectiveDropZone === 'inside'}
 		ondragstart={onDragStart}
 		ondragend={onDragEnd}
 	>
-		<!-- Header row — drag + touch target (keeps parent indicators from bleeding into children) -->
+		<!-- Header row: drag and touch target (keeps parent indicators from bleeding into children) -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			bind:this={headerEl}
-			class="tree-node-header flex items-center gap-2 px-3 py-2.5 cursor-grab select-none active:cursor-grabbing"
-			onmouseenter={() => (hovered = true)}
-			onmouseleave={() => (hovered = false)}
+			class="tree-node-header head"
 			ondragover={onDragOver}
 			ondragleave={onDragLeave}
 			ondrop={handleDrop}
@@ -265,28 +259,29 @@
 			ontouchmove={onHeaderTouchMove}
 			ontouchend={onHeaderTouchEnd}
 		>
-			<!-- Expand/collapse or type icon -->
 			{#if isSection(node)}
 				<button
 					onclick={(e) => { e.stopPropagation(); onToggle(node.id); }}
-					class="w-[18px] h-[18px] flex items-center justify-center rounded flex-shrink-0 cursor-pointer text-surface-400 transition-transform duration-150"
-					class:rotate-90={node.open}
+					class="toggle"
+					class:open={node.open}
+					aria-expanded={node.open}
+					aria-label="{node.open ? 'Collapse' : 'Expand'} {node.label}"
 				>
-					<ChevronRightIcon size={13} />
+					<ChevronRightIcon size={14} />
 				</button>
 			{:else}
-				<div class="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0 text-[12px] text-surface-500">
-					{CONTENT_TYPE_ICONS[node.type] ?? '?'}
-				</div>
+				<span class="glyph" aria-hidden="true">{CONTENT_TYPE_ICONS[node.type] ?? '?'}</span>
 			{/if}
 
-			<!-- Label and description -->
-			<div class="flex-1 min-w-0">
+			<div class="text">
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
-					class="text-sm font-medium text-surface-700 outline-none truncate"
+					class="label"
 					contenteditable="true"
 					spellcheck="false"
+					role="textbox"
+					aria-label="{isSection(node) ? 'Section' : CONTENT_TYPE_LABELS[node.type]} name"
+					tabindex="0"
 					oninput={(e) => onSetLabel(node.id, (e.currentTarget as HTMLElement).textContent ?? '')}
 					onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); } }}
 					onmousedown={(e) => e.stopPropagation()}
@@ -294,20 +289,22 @@
 
 				{#if !isSection(node) && (node.generated_content || node.content)}
 					{#if node.type === 'equation'}
-						<div class="text-[11px] text-surface-500 mt-px overflow-hidden">
+						<div class="desc eq">
 							{@html renderToString(node.generated_content || node.content, { throwOnError: false })}
 						</div>
 					{:else}
-						<p class="text-[11px] text-surface-500 mt-px truncate">
-							{((node.generated_content || node.content) ?? '').slice(0, 100)}
-						</p>
+						<p class="desc">{((node.generated_content || node.content) ?? '').slice(0, 100)}</p>
 					{/if}
 				{:else}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div
-						class="text-[11px] text-surface-500 mt-px truncate outline-none"
+						class="desc"
 						contenteditable="true"
 						spellcheck="false"
+						role="textbox"
+						aria-label="Short description"
+						tabindex="0"
+						data-placeholder="add a short description"
 						oninput={(e) => onSetDesc(node.id, (e.currentTarget as HTMLElement).textContent ?? '')}
 						onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); } }}
 						onmousedown={(e) => e.stopPropagation()}
@@ -315,108 +312,66 @@
 				{/if}
 
 				{#if !isSection(node) && node.type === 'image' && node.imageUrl}
-					<img src={node.imageUrl} alt={node.altText || ''} class="max-h-10 rounded mt-1" />
+					<img src={node.imageUrl} alt={node.altText || ''} class="thumb" />
 				{/if}
 			</div>
 
-			<!-- Type badge -->
 			{#if isSection(node)}
-				<span class="text-[10px] px-[7px] py-[2px] rounded font-medium flex-shrink-0 bg-blue-100 text-blue-700">
-					section
-				</span>
+				<Tag tone="info">section</Tag>
 			{:else}
-				<span class="text-[10px] px-[7px] py-[2px] rounded font-medium flex-shrink-0 {CONTENT_TYPE_TAG_CLASSES[node.type] ?? 'bg-surface-100 text-surface-700'}">
-					{CONTENT_TYPE_LABELS[node.type] ?? node.type}
-				</span>
+				<Tag tone={CONTENT_TYPE_TONES[node.type] ?? 'muted'}>{CONTENT_TYPE_LABELS[node.type] ?? node.type}</Tag>
 			{/if}
 
-			<!-- Persistent regenerate button for content nodes -->
 			{#if !isSection(node)}
 				<button
 					onclick={(e) => { e.stopPropagation(); onGenerate(node, parentSectionId); }}
 					disabled={isGenerating}
-					class="{btnBase} opacity-40 hover:opacity-100 hover:text-green-600 disabled:opacity-20"
+					class="act gen"
 					title="Regenerate"
+					aria-label="Regenerate {node.label}"
 				>
-					<SparklesIcon size={13} />
+					<SparklesIcon size={14} />
 				</button>
 			{/if}
 
-			<!-- Action buttons (hover) -->
-			{#if hovered}
-				<div class="flex gap-1">
-					<button
-						onclick={(e) => { e.stopPropagation(); onEdit(node, parentSectionId); }}
-						class={btnBase}
-						title="Edit"
-					>
-						<PencilIcon size={13} />
+			<!-- Row actions: shown on hover or keyboard focus -->
+			<div class="acts">
+				<button onclick={(e) => { e.stopPropagation(); onEdit(node, parentSectionId); }} class="act" title="Edit" aria-label="Edit {node.label}">
+					<PencilIcon size={14} />
+				</button>
+				{#if isSection(node)}
+					<button onclick={(e) => { e.stopPropagation(); onAddAbove(node.id); }} class="act" title="Add section above" aria-label="Add section above">
+						<ArrowUpIcon size={14} />
 					</button>
-					{#if isSection(node)}
-						<button
-							onclick={(e) => { e.stopPropagation(); onAddAbove(node.id); }}
-							class="{btnBase} hover:text-blue-600"
-							title="Add section above"
-						>
-							<ArrowUpIcon size={13} />
-						</button>
-						<button
-							onclick={(e) => { e.stopPropagation(); onAddBelow(node.id); }}
-							class="{btnBase} hover:text-blue-600"
-							title="Add section below"
-						>
-							<ArrowDownIcon size={13} />
-						</button>
-						<button
-							onclick={(e) => { e.stopPropagation(); onGenerate(node, parentSectionId); }}
-							disabled={isGenerating}
-							class="{btnBase} hover:text-green-600 disabled:opacity-40"
-							title="Generate section"
-						>
-							<SparklesIcon size={13} />
-						</button>
-					{/if}
-					{#if isSection(node) && onCopy}
-						<button
-							onclick={(e) => { e.stopPropagation(); onCopy!(node); }}
-							class="{btnBase} hover:text-indigo-600"
-							title="Copy section"
-						>
-							<CopyIcon size={13} />
-						</button>
-					{/if}
-					{#if isSection(node) && onSaveSnippet}
-						<button
-							onclick={(e) => { e.stopPropagation(); onSaveSnippet!(node); }}
-							class="{btnBase} hover:text-amber-600"
-							title="Save as snippet"
-						>
-							<BookmarkPlusIcon size={13} />
-						</button>
-					{/if}
-					<button
-						onclick={(e) => { e.stopPropagation(); onDelete(node.id); }}
-						class="{btnBase} hover:text-red-500"
-						title="Delete"
-					>
-						<Trash2Icon size={13} />
+					<button onclick={(e) => { e.stopPropagation(); onAddBelow(node.id); }} class="act" title="Add section below" aria-label="Add section below">
+						<ArrowDownIcon size={14} />
 					</button>
-				</div>
-			{/if}
+					<button onclick={(e) => { e.stopPropagation(); onGenerate(node, parentSectionId); }} disabled={isGenerating} class="act gen" title="Generate section" aria-label="Generate {node.label}">
+						<SparklesIcon size={14} />
+					</button>
+				{/if}
+				{#if isSection(node) && onCopy}
+					<button onclick={(e) => { e.stopPropagation(); onCopy!(node); }} class="act" title="Copy section" aria-label="Copy {node.label}">
+						<CopyIcon size={14} />
+					</button>
+				{/if}
+				{#if isSection(node) && onSaveSnippet}
+					<button onclick={(e) => { e.stopPropagation(); onSaveSnippet!(node); }} class="act" title="Save as snippet" aria-label="Save {node.label} as snippet">
+						<BookmarkPlusIcon size={14} />
+					</button>
+				{/if}
+				<button onclick={(e) => { e.stopPropagation(); onDelete(node.id); }} class="act del" title="Delete" aria-label="Delete {node.label}">
+					<Trash2Icon size={14} />
+				</button>
+			</div>
 		</div>
 
-		<!-- Children (sections only, when open) -->
 		{#if isSection(node) && node.open}
-			<div class="flex flex-col gap-1.5 px-2 pb-2 pl-6">
+			<div class="kids">
 				{#if node.children.length === 0}
-					<!-- Empty section drop zone -->
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div
-						class="min-h-8 rounded-md border-2 border-dashed border-surface-200 flex items-center justify-center text-xs text-surface-400 transition-colors duration-100"
-						ondragover={handleEmptyDragOver}
-						ondrop={handleEmptyDrop}
-					>
-						Drop here or add content below
+					<div class="empty nd-hatch" ondragover={handleEmptyDragOver} ondrop={handleEmptyDrop}>
+						<span class="nd-meta">drop here, or add content below</span>
 					</div>
 				{:else}
 					{#each node.children as child (child.id)}
@@ -442,28 +397,119 @@
 					{/each}
 				{/if}
 
-				<!-- Add content/section buttons -->
-				<div class="flex flex-wrap gap-2 pt-1">
+				<div class="adds">
 					{#each CONTENT_TYPES as [type, label]}
-						<button
-							onclick={(e) => { e.stopPropagation(); onAddContent(node.id, type); }}
-							class="text-[11px] px-2 py-1 rounded border border-surface-200 bg-white cursor-pointer text-surface-600 hover:bg-surface-100 flex items-center gap-1"
-						>
-							+ {label}
-						</button>
+						<button onclick={(e) => { e.stopPropagation(); onAddContent(node.id, type); }} class="add">+ {label}</button>
 					{/each}
-					<button
-						onclick={(e) => { e.stopPropagation(); onAddSubSection(node.id); }}
-						class="text-[11px] px-2 py-1 rounded border border-surface-200 bg-white cursor-pointer text-surface-600 hover:bg-surface-100 flex items-center gap-1"
-					>
-						+ Section
-					</button>
+					<button onclick={(e) => { e.stopPropagation(); onAddSubSection(node.id); }} class="add">+ Section</button>
 				</div>
 			</div>
 		{/if}
 	</div>
 
-	{#if effectiveDropZone === 'after'}
-		<div class="absolute inset-x-0 -bottom-[3px] h-[3px] bg-primary-500 rounded z-10 pointer-events-none"></div>
-	{/if}
+	{#if effectiveDropZone === 'after'}<div class="drop-line after"></div>{/if}
 </div>
+
+<style>
+	.node-wrap { position: relative; }
+	.drop-line { position: absolute; right: 0; left: 0; z-index: 10; height: 2px; background: var(--nd-accent); box-shadow: var(--nd-glow-accent); pointer-events: none; }
+	.drop-line.before { top: -3px; }
+	.drop-line.after { bottom: -3px; }
+
+	.node { border: 1px solid var(--nd-line); background: var(--nd-surface-1); transition: border-color var(--nd-dur-fast) var(--nd-ease); }
+	.node.section { border-color: var(--nd-line-strong); background: var(--nd-bg); }
+	.node.drop-inside { border-color: var(--nd-accent); }
+
+	.head {
+		display: flex;
+		align-items: center;
+		gap: var(--nd-space-2);
+		padding: var(--nd-space-2) var(--nd-space-3);
+		cursor: grab;
+		user-select: none;
+	}
+	.head:active { cursor: grabbing; }
+	.section > .head { border-left: 2px solid var(--nd-accent); }
+
+	.toggle {
+		display: grid;
+		place-items: center;
+		flex: none;
+		width: 1.5rem;
+		height: 1.5rem;
+		border: 0;
+		background: transparent;
+		color: var(--nd-accent);
+		cursor: pointer;
+		transition: transform var(--nd-dur-fast) var(--nd-ease);
+	}
+	.toggle.open { transform: rotate(90deg); }
+	.glyph { flex: none; width: 1.75rem; font-family: var(--nd-font-mono); font-size: var(--nd-text-2xs); color: var(--nd-text-mute); text-align: center; }
+
+	.text { flex: 1; min-width: 0; }
+	/* Editable text is a click target: keep it at least 24px tall (WCAG 2.5.8). */
+	.label {
+		min-height: 24px;
+		line-height: 24px;
+		overflow: hidden;
+		font-family: var(--nd-font-ui);
+		font-size: var(--nd-text-md);
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		outline: none;
+		cursor: text;
+	}
+	.section > .head .label { text-transform: uppercase; letter-spacing: var(--nd-tracking-label); }
+	.desc {
+		min-height: 24px;
+		line-height: 24px;
+		margin: 0;
+		overflow: hidden;
+		color: var(--nd-text-dim);
+		font-size: var(--nd-text-xs);
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		outline: none;
+	}
+	.desc[contenteditable]:empty::before { content: attr(data-placeholder); color: var(--nd-text-mute); }
+	.label:focus-visible, .desc:focus-visible { outline: 1px solid var(--nd-focus); outline-offset: 2px; }
+	.desc.eq { white-space: normal; }
+	.thumb { max-height: 2.5rem; margin-top: var(--nd-space-1); border: 1px solid var(--nd-line); }
+
+	.act {
+		display: grid;
+		place-items: center;
+		width: 1.75rem;
+		height: 1.75rem;
+		border: 0;
+		background: transparent;
+		color: var(--nd-text-mute);
+		cursor: pointer;
+	}
+	.act:hover:not(:disabled) { background: var(--nd-surface-2); color: var(--nd-text); }
+	.act.gen:hover:not(:disabled) { color: var(--nd-accent); }
+	.act.del:hover { color: var(--nd-danger); }
+	.act:disabled { color: var(--nd-line-strong); cursor: not-allowed; }
+	.acts { display: flex; opacity: 0; transition: opacity var(--nd-dur-fast) var(--nd-ease); }
+	.head:hover .acts, .head:focus-within .acts { opacity: 1; }
+
+	.kids { display: flex; flex-direction: column; gap: var(--nd-space-2); padding: 0 var(--nd-space-2) var(--nd-space-2) var(--nd-space-6); }
+	.empty { display: grid; place-items: center; min-height: 2.25rem; border: 1px solid var(--nd-line); }
+	.adds { display: flex; flex-wrap: wrap; gap: var(--nd-space-1); padding-top: var(--nd-space-1); }
+	.add {
+		min-height: 24px;
+		padding: 0.2em 0.6em;
+		border: 1px solid var(--nd-line);
+		background: transparent;
+		color: var(--nd-text-dim);
+		font-family: var(--nd-font-ui);
+		font-size: var(--nd-text-xs);
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		cursor: pointer;
+	}
+	.add:hover { border-color: var(--nd-accent); color: var(--nd-accent); }
+</style>

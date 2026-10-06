@@ -4,12 +4,13 @@ GenAI Writer as a desktop app. A document editor that puts what you say ahead of
 You build a content tree of sections, text, images, code, equations and tables, and describe
 each part in plain words. The AI writes the prose.
 
-Wails v2 (Go) + SvelteKit (Svelte 5). Started as a browser app, then ported to Wails.
+Wails v2 (Go) + SvelteKit (Svelte 5) + NEONDECK. Started as a browser app, then ported to Wails.
 
 ## Status
 
-- **Phase 1 (done):** runs in Wails with a Go backend. The UI is still Skeleton + Tailwind.
-- **Phase 2 (next):** restyle to NEONDECK, drop Skeleton and Tailwind, frameless window with the AppShell title bar.
+- **Phase 1 (done):** runs in Wails with a Go backend.
+- **Phase 2 (done):** NEONDECK look, frameless window with the AppShell title bar. The document preview is on paper (editorial mode).
+  axe: 0 violations on every screen and dialog (WCAG 2.2 AA).
 
 ## Setup
 ```bash
@@ -40,7 +41,8 @@ in `images/` by content hash, and snapshots refer to them.
 | `fetch.go` | streaming HTTP proxy. Every outbound request (models, SwarmUI, reference URLs) goes through Go: no CORS, cookies work, bodies stream back as events |
 | `store.go` | the document library on disk |
 | `kv.go` | small key-value state, the desktop replacement for localStorage |
-| `frontend/src/lib/platform/` | `net.ts` (fetch through Go), `store.svelte.ts` (Go or Dexie), `kv.ts`. App code calls these, never Go or Dexie directly |
+| `save.go` | native Save dialog for exports (the webview can't do browser downloads) |
+| `frontend/src/lib/platform/` | `net.ts` (fetch through Go), `store.svelte.ts` (Go or Dexie), `kv.ts`, `save.ts` (exports), `window.ts`. App code calls these, never Go or Dexie directly |
 | `frontend/src/lib/wailsjs/` | generated bindings (`make bindings`), committed |
 
 Routes use the hash router (`#/documents`), so every page lives in one `index.html`.
@@ -51,6 +53,9 @@ Routes use the hash router (`#/documents`), so every page lives in one `index.ht
   streams a real chat completion through the proxy. Off by default.
 
 ## Notes
+- The top bar is the title bar (`--wails-draggable: drag`). Buttons and links inside opt out.
+- PDF export prints from a hidden frame on desktop. The print dialog's "Print to File" makes the PDF.
+- NEONDECK is copied in (`install-links=true`). After changing it in `sharable_assets`, rebuild it there, then `npm run update:neondeck` in `frontend/`.
 - WebKitGTK 4.1 needs `-tags webkit2_41`. The Makefile adds it.
 - `env_linux.go` turns off WebKit's DMA-BUF renderer (blank window on NVIDIA).
 - Windows: `make windows` cross-compiles from Linux. macOS needs a Mac or CI.

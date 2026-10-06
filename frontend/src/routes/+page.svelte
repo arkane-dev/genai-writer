@@ -7,7 +7,7 @@
 	import type { DocumentOptions } from '$lib/types';
 	import { currentDoc } from '$lib/currentDoc.svelte';
 	import { store } from '$lib/platform/store.svelte';
-	import { FolderOpenIcon, XIcon } from '@lucide/svelte';
+	import { Button } from '@cyberpunk-apps/neondeck';
 
 	let documentTitle = $state('');
 	let documentOptions = $state<DocumentOptions>({
@@ -49,38 +49,44 @@
 </script>
 
 <svelte:head>
-	<title>{documentTitle || 'AI Writer'}</title>
+	<title>{documentTitle || 'GenAI Writer'}</title>
 </svelte:head>
 
 {#if currentDoc.id}
-	<!-- Breadcrumb / close bar -->
-	<div class="flex items-center gap-1.5 text-sm text-surface-500 mb-3 -mt-1">
-		<a href="#/documents" class="hover:text-primary-600 transition-colors">Documents</a>
-		<span class="text-surface-300">›</span>
-		<span class="flex-1 truncate text-surface-700 font-medium">{documentTitle || 'Untitled'}</span>
-		<button
-			onclick={closeDocument}
-			class="flex items-center gap-1 px-2 py-1 rounded text-surface-400 hover:text-surface-700 hover:bg-surface-100 transition-colors text-xs"
-			title="Close document"
-		>
-			<XIcon class="size-3.5" /> Close
-		</button>
+	<div class="crumbs">
+		<span class="nd-meta">&gt; <a href="#/documents">documents</a> / {documentTitle || 'untitled'}</span>
+		<Button variant="ghost" size="sm" onclick={closeDocument} title="Close document">Close</Button>
 	</div>
 
 	<DocumentHeader bind:documentTitle bind:documentOptions bind:showOptions />
 	<DocumentTree {documentOptions} {documentTitle} documentId={currentDoc.id} />
 {:else}
-	<div class="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center">
-		<FolderOpenIcon class="size-16 text-surface-300" />
-		<div class="space-y-2">
-			<h2 class="h2">No document open</h2>
-			<p class="text-surface-500">Open an existing document or create a new one to get started.</p>
-		</div>
-		<button
-			onclick={() => goto('#/documents')}
-			class="btn preset-filled-primary-500"
-		>
-			Browse Documents
-		</button>
+	<div class="empty nd-hatch">
+		<p class="nd-meta">&gt; NO_DOCUMENT_LOADED<span class="nd-cursor"></span></p>
+		<h1>No document open</h1>
+		<p class="lede">Open a document, or start a new one.</p>
+		<Button arrow onclick={() => goto('#/documents')}>Browse documents</Button>
 	</div>
 {/if}
+
+<style>
+	.crumbs {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--nd-space-3);
+		margin-bottom: var(--nd-space-4);
+	}
+	.crumbs a { color: var(--nd-accent-2); }
+	.empty {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: var(--nd-space-3);
+		margin-top: 12vh;
+		padding: var(--nd-space-10) var(--nd-space-8);
+		border: 1px solid var(--nd-line);
+	}
+	.empty h1 { margin: 0; font-size: var(--nd-text-3xl); }
+	.lede { color: var(--nd-text-dim); margin: 0 0 var(--nd-space-3); }
+</style>

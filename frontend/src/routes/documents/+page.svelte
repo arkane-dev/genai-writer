@@ -1,14 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { Dialog } from '@skeletonlabs/skeleton-svelte';
-	import {
-		FolderPlusIcon,
-		FilePlusIcon,
-		FolderIcon,
-		FolderOpenIcon,
-		FileTextIcon,
-		Trash2Icon,
-	} from '@lucide/svelte';
+	import { Dialog, Panel, Button, Input, Select, SectionHeader, Tag } from '@cyberpunk-apps/neondeck';
+	import { PencilIcon, Trash2Icon } from '@lucide/svelte';
 	import { store, library, type Folder, type Document } from '$lib/platform/store.svelte';
 	import { currentDoc } from '$lib/currentDoc.svelte';
 
@@ -80,15 +73,13 @@
 
 	// ── Rename / delete ────────────────────────────────────────────────────────
 
-	async function deleteDocument(doc: Document, e: MouseEvent) {
-		e.stopPropagation();
+	async function deleteDocument(doc: Document) {
 		if (!confirm(`Delete "${doc.title}"? Its history will also be removed.`)) return;
 		await store.deleteDocument(doc.id!);
 		if (currentDoc.id === doc.id) currentDoc.close();
 	}
 
-	async function deleteFolder(folder: Folder, e: MouseEvent) {
-		e.stopPropagation();
+	async function deleteFolder(folder: Folder) {
 		const count = documents.filter((d) => d.folderId === folder.id).length;
 		const msg = count
 			? `Delete folder "${folder.name}"? The ${count} document(s) inside will be moved to root.`
@@ -98,15 +89,44 @@
 		if (selectedFolderId === folder.id) selectedFolderId = 'all';
 	}
 
-	async function handleDocRename(doc: Document, el: HTMLElement) {
-		const title = el.textContent?.trim() || 'Untitled Document';
+	// Inline rename: one item at a time, keyed "doc:<id>" or "folder:<id>".
+	let renaming = $state<string | null>(null);
+	let renameText = $state('');
+	function startRename(key: string, current: string) {
+		renaming = key;
+		renameText = current;
+	}
+	async function finishRename(commit: boolean) {
+		const key = renaming;
+		renaming = null;
+		if (!commit || !key) return;
+		const [kind, idText] = key.split(':');
+		const id = Number(idText);
+		if (kind === 'doc') {
+			const doc = documents.find((d) => d.id === id);
+			if (doc) await handleDocRename(doc, renameText);
+		} else {
+			const folder = folders.find((f) => f.id === id);
+			if (folder) await handleFolderRename(folder, renameText);
+		}
+	}
+	function renameKeys(e: KeyboardEvent) {
+		if (e.key === 'Enter') finishRename(true);
+		else if (e.key === 'Escape') {
+			e.preventDefault();
+			finishRename(false);
+		}
+	}
+
+	async function handleDocRename(doc: Document, text: string) {
+		const title = text.trim() || 'Untitled Document';
 		if (title === doc.title) return;
 		await store.updateDocument(doc.id!, { title, updatedAt: Date.now() });
 		if (currentDoc.id === doc.id) currentDoc.setTitle(title);
 	}
 
-	async function handleFolderRename(folder: Folder, el: HTMLElement) {
-		const name = el.textContent?.trim() || folder.name;
+	async function handleFolderRename(folder: Folder, text: string) {
+		const name = text.trim() || folder.name;
 		if (name === folder.name) return;
 		await store.renameFolder(folder.id!, name);
 	}
@@ -117,228 +137,148 @@
 </script>
 
 <svelte:head>
-	<title>Documents — AI Writer</title>
+	<title>Documents · GenAI Writer</title>
 </svelte:head>
 
-<!-- ── Page header ─────────────────────────────────────────────────────────── -->
-<div class="flex items-center justify-between mb-6 flex-wrap gap-3">
-	<h1 class="h2">Documents</h1>
-	<div class="flex gap-2">
-		<button
-			onclick={() => (showFolderDialog = true)}
-			class="btn preset-outlined flex items-center gap-2"
-		>
-			<FolderPlusIcon class="size-4" /> New Folder
-		</button>
-		<button
-			onclick={() => (showDocDialog = true)}
-			class="btn preset-filled-primary-500 flex items-center gap-2"
-		>
-			<FilePlusIcon class="size-4" /> New Document
-		</button>
-	</div>
+<SectionHeader index="01" zh="文档" title="Documents" meta="{documents.length} doc{documents.length === 1 ? '' : 's'} · {folders.length} folder{folders.length === 1 ? '' : 's'}" />
+
+<div class="bar">
+	<Button variant="outline" onclick={() => (showFolderDialog = true)}>New folder</Button>
+	<Button onclick={() => (showDocDialog = true)}>New document</Button>
 </div>
 
-<!-- ── Body ────────────────────────────────────────────────────────────────── -->
-<div class="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6">
-
-	<!-- Folder list -->
-	<aside class="space-y-1">
-		<p class="text-xs font-semibold text-surface-400 uppercase tracking-wide px-2 mb-2">Folders</p>
-
-		<!-- svelte-ignore a11y_interactive_supports_focus -->
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			role="button"
-			class="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors
-				{selectedFolderId === 'all' ? 'bg-primary-100 text-primary-700 font-medium' : 'hover:bg-surface-100'}"
-			onclick={() => (selectedFolderId = 'all')}
-		>
-			<FolderOpenIcon class="size-4 shrink-0" />
-			<span class="text-sm flex-1">All Documents</span>
-			<span class="text-xs text-surface-400">{documents.length}</span>
-		</div>
-
-		<!-- svelte-ignore a11y_interactive_supports_focus -->
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-			role="button"
-			class="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors
-				{selectedFolderId === null ? 'bg-primary-100 text-primary-700 font-medium' : 'hover:bg-surface-100'}"
-			onclick={() => (selectedFolderId = null)}
-		>
-			<FolderIcon class="size-4 shrink-0 text-surface-400" />
-			<span class="text-sm flex-1 text-surface-500">Unfiled</span>
-			<span class="text-xs text-surface-400">{documents.filter((d) => d.folderId === null).length}</span>
-		</div>
-
-		{#each folders as folder (folder.id)}
-			<!-- svelte-ignore a11y_interactive_supports_focus -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div
-				role="button"
-				class="group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors
-					{selectedFolderId === folder.id ? 'bg-primary-100 text-primary-700 font-medium' : 'hover:bg-surface-100'}"
-				onclick={() => (selectedFolderId = folder.id!)}
-			>
-				<FolderIcon class="size-4 shrink-0 text-amber-500" />
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<span
-					class="text-sm flex-1 outline-none truncate"
-					contenteditable="true"
-					spellcheck="false"
-					onmousedown={(e) => e.stopPropagation()}
-					onblur={(e) => handleFolderRename(folder, e.currentTarget as HTMLElement)}
-					onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); } }}
-				>{folder.name}</span>
-				<span class="text-xs text-surface-400">{documents.filter((d) => d.folderId === folder.id).length}</span>
-				<button
-					onclick={(e) => deleteFolder(folder, e)}
-					class="opacity-0 group-hover:opacity-100 p-0.5 rounded text-surface-400 hover:text-red-500 transition-opacity"
-					title="Delete folder"
-				>
-					<Trash2Icon class="size-3" />
+<div class="layout">
+	<nav class="folders" aria-label="Folders">
+		<p class="nd-label">Folders</p>
+		<ul>
+			<li class:on={selectedFolderId === 'all'}>
+				<button class="pick" aria-pressed={selectedFolderId === 'all'} onclick={() => (selectedFolderId = 'all')}>
+					<span class="name">All documents</span><span class="count">{documents.length}</span>
 				</button>
-			</div>
-		{/each}
-	</aside>
+			</li>
+			<li class:on={selectedFolderId === null}>
+				<button class="pick" aria-pressed={selectedFolderId === null} onclick={() => (selectedFolderId = null)}>
+					<span class="name">Unfiled</span><span class="count">{documents.filter((d) => d.folderId === null).length}</span>
+				</button>
+			</li>
+			{#each folders as folder (folder.id)}
+				<li class:on={selectedFolderId === folder.id}>
+					{#if renaming === `folder:${folder.id}`}
+						<!-- svelte-ignore a11y_autofocus -->
+						<input class="rename" aria-label="Folder name" bind:value={renameText} autofocus onkeydown={renameKeys} onblur={() => finishRename(true)} />
+					{:else}
+						<button class="pick" aria-pressed={selectedFolderId === folder.id} onclick={() => (selectedFolderId = folder.id!)}>
+							<span class="name">{folder.name}</span><span class="count">{documents.filter((d) => d.folderId === folder.id).length}</span>
+						</button>
+						<span class="acts">
+							<button class="act" aria-label="Rename folder {folder.name}" title="Rename" onclick={() => startRename(`folder:${folder.id}`, folder.name)}><PencilIcon size={13} /></button>
+							<button class="act del" aria-label="Delete folder {folder.name}" title="Delete" onclick={() => deleteFolder(folder)}><Trash2Icon size={13} /></button>
+						</span>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	</nav>
 
-	<!-- Document grid -->
-	<section>
+	<section aria-label="Documents">
 		{#if visibleDocuments.length === 0}
-			<div class="flex flex-col items-center justify-center py-20 text-center gap-4">
-				<FileTextIcon class="size-12 text-surface-200" />
-				<p class="text-surface-400 text-sm">No documents here yet.</p>
-				<button
-					onclick={() => (showDocDialog = true)}
-					class="btn preset-outlined-primary-500 btn-sm"
-				>
-					Create one
-				</button>
+			<div class="empty nd-hatch">
+				<p class="nd-meta">&gt; NO_DOCUMENTS_HERE</p>
+				<Button variant="outline" onclick={() => (showDocDialog = true)}>Create one</Button>
 			</div>
 		{:else}
-			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-				{#each visibleDocuments as doc (doc.id)}
-					<!-- svelte-ignore a11y_interactive_supports_focus -->
-					<!-- svelte-ignore a11y_click_events_have_key_events -->
-					<div
-						role="button"
-						class="group relative flex flex-col gap-2 p-4 rounded-xl border bg-white
-							hover:border-primary-300 hover:shadow-md transition-all cursor-pointer
-							{currentDoc.id === doc.id ? 'border-primary-400 bg-primary-50' : 'border-surface-200'}"
-						onclick={() => openDocument(doc.id!, doc.title)}
-					>
-						<div class="flex items-start gap-2">
-							<FileTextIcon class="size-5 text-primary-500 shrink-0 mt-0.5" />
-							<!-- svelte-ignore a11y_no_static_element_interactions -->
-							<div
-								class="flex-1 text-sm font-medium text-surface-800 outline-none"
-								contenteditable="true"
-								spellcheck="false"
-								onmousedown={(e) => e.stopPropagation()}
-								onblur={(e) => handleDocRename(doc, e.currentTarget as HTMLElement)}
-								onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).blur(); } }}
-							>{doc.title}</div>
-							<button
-								onclick={(e) => deleteDocument(doc, e)}
-								class="opacity-0 group-hover:opacity-100 p-1 rounded text-surface-400 hover:text-red-500 transition-opacity shrink-0"
-								title="Delete document"
-							>
-								<Trash2Icon class="size-3.5" />
-							</button>
+			<div class="grid">
+				{#each visibleDocuments as doc, i (doc.id)}
+					{@const folder = doc.folderId ? folders.find((f) => f.id === doc.folderId) : undefined}
+					<Panel index={String(i + 1).padStart(2, '0')} title={doc.title} meta={folder?.name ?? 'unfiled'} cut="sm" active={currentDoc.id === doc.id}>
+						{#if renaming === `doc:${doc.id}`}
+							<!-- svelte-ignore a11y_autofocus -->
+							<input class="rename" aria-label="Document title" bind:value={renameText} autofocus onkeydown={renameKeys} onblur={() => finishRename(true)} />
+						{/if}
+						<p class="nd-meta updated">updated {formatDate(doc.updatedAt)}</p>
+						<div class="card-acts">
+							{#if currentDoc.id === doc.id}<Tag tone="success" dot>open</Tag>{/if}
+							<span class="spacer"></span>
+							<button class="act" aria-label="Rename {doc.title}" title="Rename" onclick={() => startRename(`doc:${doc.id}`, doc.title)}><PencilIcon size={14} /></button>
+							<button class="act del" aria-label="Delete {doc.title}" title="Delete" onclick={() => deleteDocument(doc)}><Trash2Icon size={14} /></button>
+							<Button size="sm" variant="outline" arrow onclick={() => openDocument(doc.id!, doc.title)} aria-label="Open {doc.title}">Open</Button>
 						</div>
-
-						{#if doc.folderId}
-							{@const folder = folders.find((f) => f.id === doc.folderId)}
-							{#if folder}
-								<div class="flex items-center gap-1 text-xs text-amber-600">
-									<FolderIcon class="size-3" />
-									{folder.name}
-								</div>
-							{/if}
-						{/if}
-
-						<p class="text-xs text-surface-400 mt-auto pt-1">
-							Updated {formatDate(doc.updatedAt)}
-						</p>
-
-						{#if currentDoc.id === doc.id}
-							<span class="absolute top-2 right-8 text-[10px] px-1.5 py-0.5 rounded bg-primary-500 text-white font-medium">
-								open
-							</span>
-						{/if}
-					</div>
+					</Panel>
 				{/each}
 			</div>
 		{/if}
 	</section>
 </div>
 
-<!-- ── New Folder dialog ─────────────────────────────────────────────────────── -->
-<Dialog
-	open={showFolderDialog}
-	onOpenChange={(e) => { showFolderDialog = e.open; if (!e.open) newFolderName = ''; }}
->
-	<Dialog.Backdrop class="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" />
-	<Dialog.Positioner class="fixed inset-0 z-50 flex items-center justify-center p-4">
-		<Dialog.Content class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
-			<h2 class="text-lg font-semibold">New Folder</h2>
-			<label class="label">
-				<span class="label-text">Folder name</span>
-				<input
-					class="input"
-					type="text"
-					placeholder="e.g. Research"
-					bind:value={newFolderName}
-					onkeydown={(e) => { if (e.key === 'Enter') createFolder(); }}
-				/>
-			</label>
-			<div class="flex justify-end gap-2 pt-2">
-				<button onclick={() => (showFolderDialog = false)} class="btn preset-outlined">Cancel</button>
-				<button onclick={createFolder} class="btn preset-filled-primary-500" disabled={!newFolderName.trim()}>
-					Create
-				</button>
-			</div>
-		</Dialog.Content>
-	</Dialog.Positioner>
+<Dialog bind:open={showFolderDialog} title="New folder" size="sm" onclose={() => (newFolderName = '')}>
+	<Input label="Folder name" placeholder="Research" bind:value={newFolderName} onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') createFolder(); }} />
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (showFolderDialog = false)}>Cancel</Button>
+		<Button onclick={createFolder} disabled={!newFolderName.trim()}>Create</Button>
+	{/snippet}
 </Dialog>
 
-<!-- ── New Document dialog ───────────────────────────────────────────────────── -->
-<Dialog
-	open={showDocDialog}
-	onOpenChange={(e) => { showDocDialog = e.open; if (!e.open) { newDocTitle = ''; newDocFolderId = null; } }}
->
-	<Dialog.Backdrop class="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" />
-	<Dialog.Positioner class="fixed inset-0 z-50 flex items-center justify-center p-4">
-		<Dialog.Content class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
-			<h2 class="text-lg font-semibold">New Document</h2>
-			<label class="label">
-				<span class="label-text">Title</span>
-				<input
-					class="input"
-					type="text"
-					placeholder="Untitled Document"
-					bind:value={newDocTitle}
-					onkeydown={(e) => { if (e.key === 'Enter') createDocument(); }}
-				/>
-			</label>
-			{#if folders.length > 0}
-				<label class="label">
-					<span class="label-text">Folder <span class="text-surface-400">(optional)</span></span>
-					<select class="select" bind:value={newDocFolderId}>
-						<option value={null}>None</option>
-						{#each folders as f (f.id)}
-							<option value={f.id}>{f.name}</option>
-						{/each}
-					</select>
-				</label>
-			{/if}
-			<div class="flex justify-end gap-2 pt-2">
-				<button onclick={() => (showDocDialog = false)} class="btn preset-outlined">Cancel</button>
-				<button onclick={createDocument} class="btn preset-filled-primary-500">
-					Create
-				</button>
-			</div>
-		</Dialog.Content>
-	</Dialog.Positioner>
+<Dialog bind:open={showDocDialog} title="New document" size="sm" onclose={() => { newDocTitle = ''; newDocFolderId = null; }}>
+	<div class="form">
+		<Input label="Title" placeholder="Untitled document" bind:value={newDocTitle} onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') createDocument(); }} />
+		{#if folders.length > 0}
+			<Select label="Folder (optional)" bind:value={newDocFolderId}>
+				<option value={null}>None</option>
+				{#each folders as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
+			</Select>
+		{/if}
+	</div>
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (showDocDialog = false)}>Cancel</Button>
+		<Button onclick={createDocument}>Create</Button>
+	{/snippet}
 </Dialog>
+
+<style>
+	.bar { display: flex; justify-content: flex-end; gap: var(--nd-space-3); margin: calc(var(--nd-space-2) * -1) 0 var(--nd-space-5); }
+	.layout { display: grid; grid-template-columns: 14rem minmax(0, 1fr); gap: var(--nd-space-6); align-items: start; }
+
+	.folders ul { margin: var(--nd-space-2) 0 0; padding: 0; list-style: none; border-top: 1px solid var(--nd-line); }
+	.folders li { display: flex; align-items: center; border-bottom: 1px solid var(--nd-line); border-left: 2px solid transparent; }
+	.folders li.on { border-left-color: var(--nd-accent); background: var(--nd-accent-tint); }
+	.pick {
+		display: flex;
+		flex: 1;
+		min-width: 0;
+		gap: var(--nd-space-2);
+		padding: var(--nd-space-2) var(--nd-space-3);
+		border: 0;
+		background: transparent;
+		text-align: left;
+		cursor: pointer;
+	}
+	.pick:hover { background: var(--nd-surface-2); }
+	.on .pick { color: var(--nd-accent); }
+	.name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--nd-font-ui); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; font-size: var(--nd-text-sm); }
+	.count { font-family: var(--nd-font-mono); font-size: var(--nd-text-xs); color: var(--nd-text-mute); }
+	.acts { display: flex; opacity: 0; }
+	.folders li:hover .acts, .folders li:focus-within .acts { opacity: 1; }
+	.act { display: grid; place-items: center; width: 1.75rem; height: 1.75rem; border: 0; background: transparent; color: var(--nd-text-mute); cursor: pointer; }
+	.act:hover { background: var(--nd-surface-2); color: var(--nd-text); }
+	.act.del:hover { color: var(--nd-danger); }
+	.rename {
+		flex: 1;
+		width: 100%;
+		margin: var(--nd-space-1) 0;
+		padding: var(--nd-space-1) var(--nd-space-2);
+		border: 1px solid var(--nd-accent);
+		outline: none;
+		background: var(--nd-void);
+		font-family: var(--nd-font-mono);
+		font-size: var(--nd-text-sm);
+	}
+
+	.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: var(--nd-space-4); }
+	.updated { margin: 0 0 var(--nd-space-3); }
+	.card-acts { display: flex; align-items: center; gap: var(--nd-space-1); }
+	.spacer { flex: 1; }
+	.empty { display: flex; flex-direction: column; align-items: center; gap: var(--nd-space-3); padding: var(--nd-space-12) var(--nd-space-4); border: 1px solid var(--nd-line); }
+	.form { display: flex; flex-direction: column; gap: var(--nd-space-4); }
+
+	@media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+</style>

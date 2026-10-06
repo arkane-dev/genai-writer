@@ -1,6 +1,7 @@
 import { renderToString } from 'katex';
 import type { TreeNode } from '$lib/types';
 import { netFetch } from '$lib/platform/net';
+import { saveFile } from '$lib/platform/save';
 
 function escapeHtml(s: string): string {
 	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -122,7 +123,7 @@ const STYLES = `
   tr:nth-child(even){background:#fafafa}
 `;
 
-export async function downloadHtml(tree: TreeNode[], title: string): Promise<void> {
+export async function downloadHtml(tree: TreeNode[], title: string): Promise<string | null> {
 	const katexCss = await inlineKatexCss();
 
 	const bodyParts: string[] = [];
@@ -145,10 +146,5 @@ ${bodyParts.join('\n')}
 </html>`;
 
 	const blob = new Blob([html], { type: 'text/html' });
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = `${title || 'document'}.html`;
-	a.click();
-	setTimeout(() => URL.revokeObjectURL(url), 5000);
+	return saveFile(blob, `${title || 'document'}.html`);
 }

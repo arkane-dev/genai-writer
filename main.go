@@ -28,9 +28,8 @@ func main() {
 		Height:    820,
 		MinWidth:  960,
 		MinHeight: 640,
-		// Phase 1 keeps the OS frame: the ported UI has no title bar of its own yet.
-		// Phase 2 (NEONDECK restyle) switches back to Frameless with the AppShell title bar.
-		Frameless: false,
+		// NEONDECK draws its own title bar (AppShell top bar = drag region + window controls).
+		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

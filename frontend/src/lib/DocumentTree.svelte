@@ -13,7 +13,7 @@
 	import { store, library, type Snapshot, type Snippet } from '$lib/platform/store.svelte';
 	import { diffTrees, describeChanges, serializeTree, relativeTime } from '$lib/history';
 	import { clipboardState } from '$lib/clipboardState.svelte';
-	import { Dialog } from '@skeletonlabs/skeleton-svelte';
+	import { Button, Dialog, Input, Textarea } from '@cyberpunk-apps/neondeck';
 	import { generateItem, generateSection } from '$lib/generation';
 	import { generationState } from '$lib/generationState.svelte';
 	import { findAncestors } from '$lib/contextExtractor';
@@ -26,12 +26,9 @@
 		SparklesIcon,
 		DownloadIcon,
 		CopyIcon,
-		ChevronDownIcon,
 		LayoutTemplateIcon,
 		EyeIcon,
 		EyeOffIcon,
-		CheckIcon,
-		Loader2Icon,
 	} from '@lucide/svelte';
 
 	let { documentOptions, documentTitle = '', documentId }: {
@@ -511,164 +508,97 @@
 </script>
 
 <!-- Toolbar -->
-<div bind:this={toolbarEl} class="flex items-center gap-2 px-1 pb-3 mb-1 flex-wrap">
-	<button onclick={addSection} class="btn preset-filled-primary-500 flex items-center gap-1">
-		<PlusIcon class="w-4 h-4" /> Add Section
-	</button>
+<div bind:this={toolbarEl} class="toolbar">
+	<Button variant="outline" onclick={addSection}>
+		{#snippet icon()}<PlusIcon />{/snippet}
+		Add section
+	</Button>
 
-	<div class="flex items-center gap-1">
-		<button
-			onclick={undo}
-			disabled={undoStack.length <= 1}
-			class="btn preset-outlined flex items-center gap-1 disabled:opacity-40"
-			title="Undo (Ctrl+Z)"
-		>
-			<Undo2Icon class="w-4 h-4" />
-		</button>
-		<button
-			onclick={redo}
-			disabled={redoStack.length === 0}
-			class="btn preset-outlined flex items-center gap-1 disabled:opacity-40"
-			title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
-		>
-			<Redo2Icon class="w-4 h-4" />
-		</button>
+	<div class="group" role="group" aria-label="History">
+		<Button variant="outline" onclick={undo} disabled={undoStack.length <= 1} title="Undo (Ctrl+Z)" aria-label="Undo">
+			{#snippet icon()}<Undo2Icon />{/snippet}
+		</Button>
+		<Button variant="outline" onclick={redo} disabled={redoStack.length === 0} title="Redo (Ctrl+Y / Ctrl+Shift+Z)" aria-label="Redo">
+			{#snippet icon()}<Redo2Icon />{/snippet}
+		</Button>
 	</div>
 
 	<!-- Custom: clipboard paste + saved snippets -->
-	<div class="relative">
-		<button
-			onclick={(e) => { e.stopPropagation(); showSnippetMenu = !showSnippetMenu; }}
-			class="btn preset-outlined flex items-center gap-1"
+	<div class="menu-anchor">
+		<Button
+			variant="outline"
+			onclick={(e: MouseEvent) => { e.stopPropagation(); showSnippetMenu = !showSnippetMenu; }}
 			title="Insert from clipboard or snippets"
+			aria-expanded={showSnippetMenu}
+			aria-haspopup="menu"
 		>
-			<LayoutTemplateIcon class="w-4 h-4" /> Custom <ChevronDownIcon class="w-3 h-3" />
-		</button>
+			{#snippet icon()}<LayoutTemplateIcon />{/snippet}
+			Insert ▾
+		</Button>
 
 		{#if showSnippetMenu}
-			<!-- svelte-ignore a11y_interactive_supports_focus -->
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<div
-				class="fixed inset-0 z-10"
-				role="button"
-				onclick={() => { showSnippetMenu = false; }}
-			></div>
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<div
-				class="absolute top-full left-0 mt-1 z-20 bg-white border border-surface-200 rounded-lg shadow-lg w-56 max-h-80 overflow-y-auto"
-				onclick={(e) => e.stopPropagation()}
-			>
+			<div class="scrim" onclick={() => { showSnippetMenu = false; }}></div>
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="menu" onclick={(e) => e.stopPropagation()}>
 				{#if clipboardState.node}
-					<div class="border-b border-surface-100">
-						<p class="text-[10px] font-semibold text-surface-400 uppercase tracking-wide px-3 pt-2 pb-1">Clipboard</p>
-						<button
-							class="w-full text-left px-3 py-2 text-sm hover:bg-surface-50 flex items-center gap-2"
-							onclick={pasteFromClipboard}
-						>
-							<CopyIcon class="size-3.5 text-surface-400 shrink-0" />
-							<span class="truncate">Paste "{clipboardState.node.label}"</span>
-						</button>
-					</div>
+					<p class="nd-label menu-head">Clipboard</p>
+					<button class="item" onclick={pasteFromClipboard}>
+						<CopyIcon size={14} aria-hidden="true" />
+						<span class="truncate">Paste "{clipboardState.node.label}"</span>
+					</button>
 				{/if}
-				<div>
-					<p class="text-[10px] font-semibold text-surface-400 uppercase tracking-wide px-3 pt-2 pb-1">Snippets</p>
-					{#if snippets.length === 0 && !clipboardState.node}
-						<p class="text-xs text-surface-400 px-3 py-2 italic">No snippets yet. Copy a section or visit Snippets.</p>
-					{:else if snippets.length === 0}
-						<p class="text-xs text-surface-400 px-3 py-2 italic">No saved snippets.</p>
-					{:else}
-						{#each snippets as snippet (snippet.id)}
-							<button
-								class="w-full text-left px-3 py-2 hover:bg-surface-50"
-								onclick={() => insertSnippet(snippet)}
-							>
-								<span class="block truncate text-sm font-medium">{snippet.name}</span>
-								{#if snippet.description}
-									<span class="block truncate text-xs text-surface-400">{snippet.description}</span>
-								{/if}
-							</button>
-						{/each}
-					{/if}
-				</div>
-				<div class="border-t border-surface-100 p-2">
-					<a
-						href="#/snippets"
-						class="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 px-2 py-1 rounded hover:bg-primary-50"
-						onclick={() => { showSnippetMenu = false; }}
-					>
-						Manage snippets →
-					</a>
-				</div>
+				<p class="nd-label menu-head">Snippets</p>
+				{#if snippets.length === 0}
+					<p class="menu-empty">No snippets yet. Save one from a section's menu.</p>
+				{:else}
+					{#each snippets as snippet (snippet.id)}
+						<button class="item stacked" onclick={() => insertSnippet(snippet)}>
+							<span class="truncate">{snippet.name}</span>
+							{#if snippet.description}<span class="truncate sub">{snippet.description}</span>{/if}
+						</button>
+					{/each}
+				{/if}
 			</div>
 		{/if}
 	</div>
 
-	<button
-		onclick={handleGenerateDocument}
-		disabled={isGenerating}
-		class="btn preset-filled-secondary-500 flex items-center gap-1 disabled:opacity-40"
-		title="Generate entire document"
-	>
-		<SparklesIcon class="w-4 h-4" />
+	<Button onclick={handleGenerateDocument} disabled={isGenerating} title="Generate the whole document">
+		{#snippet icon()}<SparklesIcon />{/snippet}
 		{isGenerating ? 'Generating…' : 'Generate'}
-	</button>
+	</Button>
 
-	<button
-		onclick={() => (showExport = true)}
-		class="btn preset-outlined flex items-center gap-1"
-		title="Download document"
-	>
-		<DownloadIcon class="w-4 h-4" /> Download
-	</button>
+	<Button variant="outline" onclick={() => (showExport = true)} title="Download the document">
+		{#snippet icon()}<DownloadIcon />{/snippet}
+		Export
+	</Button>
 
-	<button
-		onclick={() => { showPreview = !showPreview; }}
-		class="btn flex items-center gap-1 {showPreview ? 'preset-filled-surface-500' : 'preset-outlined'}"
-		title={showPreview ? 'Hide preview' : 'Show inline preview'}
-	>
-		{#if showPreview}
-			<EyeOffIcon class="w-4 h-4" /> Preview
-		{:else}
-			<EyeIcon class="w-4 h-4" /> Preview
-		{/if}
-	</button>
+	<Button variant={showPreview ? 'primary' : 'outline'} accent="cyan" onclick={() => { showPreview = !showPreview; }} aria-pressed={showPreview} title={showPreview ? 'Hide preview' : 'Show preview'}>
+		{#snippet icon()}{#if showPreview}<EyeOffIcon />{:else}<EyeIcon />{/if}{/snippet}
+		Preview
+	</Button>
 
-	<!-- Autosave indicator -->
-	<div class="ml-auto flex items-center gap-2">
-		{#if saveStatus === 'saving'}
-			<span class="text-xs text-surface-400 flex items-center gap-1">
-				<Loader2Icon class="w-3 h-3 animate-spin" /> Saving…
-			</span>
-		{:else if saveStatus === 'saved'}
-			<span class="text-xs text-success-600 flex items-center gap-1">
-				<CheckIcon class="w-3 h-3" /> Saved
-			</span>
-		{/if}
-
-		<button
-			onclick={() => (showHistory = true)}
-			class="btn preset-outlined flex items-center gap-1"
-			title="View history"
-		>
-			<HistoryIcon class="w-4 h-4" /> History
-		</button>
+	<div class="right">
+		<span class="save nd-meta" aria-live="polite">
+			{#if saveStatus === 'saving'}&gt; saving<span class="nd-cursor"></span>{:else if saveStatus === 'saved'}<span class="ok">&gt; saved</span>{/if}
+		</span>
+		<Button variant="ghost" onclick={() => (showHistory = true)} title="View history">
+			{#snippet icon()}<HistoryIcon />{/snippet}
+			History
+		</Button>
 	</div>
 </div>
 
 <!-- Tree root (split when preview is active) -->
-<div class={showPreview ? 'grid grid-cols-1 lg:grid-cols-2 gap-6 items-start' : ''}>
-
+<div class="work" class:split={showPreview}>
 	<!-- Tree pane -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		class="flex flex-col gap-2.5 min-h-[200px]"
-		ondragover={onRootDragOver}
-		ondrop={onRootDrop}
-	>
+	<div class="tree" ondragover={onRootDragOver} ondrop={onRootDrop}>
 		{#if tree.length === 0}
-			<div class="min-h-8 rounded-md border-2 border-dashed border-surface-200 flex items-center justify-center text-xs text-surface-400">
-				Add a section to get started
+			<div class="tree-empty nd-hatch">
+				<span class="nd-meta">&gt; EMPTY_TREE // add a section to start</span>
 			</div>
 		{:else}
 			{#each tree as node (node.id)}
@@ -695,12 +625,12 @@
 		{/if}
 	</div>
 
-	<!-- Preview pane -->
+	<!-- Preview pane: the document on paper -->
 	{#if showPreview}
-		<div class="border-l-2 border-surface-100 pl-5 lg:sticky lg:top-4 lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
-			<div class="flex items-center justify-between mb-4 pb-2 border-b border-surface-100">
-				<span class="text-xs font-semibold text-surface-400 uppercase tracking-wide">Preview</span>
-				<span class="text-[10px] text-surface-300">Click text to edit</span>
+		<aside class="preview" aria-label="Preview">
+			<div class="preview-head">
+				<span class="nd-label">Preview</span>
+				<span class="nd-meta">click text to edit</span>
 			</div>
 			<DocumentPreview
 				{tree}
@@ -708,31 +638,24 @@
 				{isGenerating}
 				onNodeUpdate={handlePreviewUpdate}
 			/>
-		</div>
+		</aside>
 	{/if}
-
 </div>
 
-<!-- Floating Generate button — only visible when toolbar is scrolled out of view -->
+<!-- Floating Generate button: only when the toolbar has scrolled out of view -->
 {#if !toolbarVisible}
-	<div class="fixed bottom-6 right-6 z-40">
-		<button
-			onclick={handleGenerateDocument}
-			disabled={isGenerating}
-			class="btn preset-filled-secondary-500 flex items-center gap-1 shadow-xl disabled:opacity-40"
-		>
-			<SparklesIcon class="w-4 h-4" />
+	<div class="float">
+		<Button onclick={handleGenerateDocument} disabled={isGenerating}>
+			{#snippet icon()}<SparklesIcon />{/snippet}
 			{isGenerating ? 'Generating…' : 'Generate'}
-		</button>
+		</Button>
 	</div>
 {/if}
 
-<!-- Section Edit Modal -->
 {#if editingSection}
 	<SectionEditModal section={editingSection} onClose={closeSectionEdit} />
 {/if}
 
-<!-- Content Edit Modal -->
 {#if editingContent}
 	<ContentEditModal
 		sectionId={editingContent.sectionId}
@@ -741,7 +664,6 @@
 	/>
 {/if}
 
-<!-- History Panel -->
 {#if showHistory}
 	<HistoryPanel
 		{currentSnapshotId}
@@ -751,38 +673,84 @@
 	/>
 {/if}
 
-<!-- Export Modal -->
 {#if showExport}
 	<ExportModal {tree} {documentTitle} onClose={() => (showExport = false)} />
 {/if}
 
-{#if showSaveSnippetModal}
-	<Dialog
-		open={true}
-		onOpenChange={(e) => { if (!e.open) showSaveSnippetModal = false; }}
-	>
-		<Dialog.Backdrop class="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" />
-		<Dialog.Positioner class="fixed inset-0 z-50 flex items-center justify-center p-4">
-			<Dialog.Content class="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
-				<Dialog.Title class="text-lg font-semibold">Save as Snippet</Dialog.Title>
-				<label class="label">
-					<span class="label-text">Name</span>
-					<input
-						class="input"
-						type="text"
-						bind:value={snippetName}
-						onkeydown={(e) => { if (e.key === 'Enter') confirmSaveSnippet(); }}
-					/>
-				</label>
-				<label class="label">
-					<span class="label-text">Description <span class="text-surface-400">(optional)</span></span>
-					<textarea class="textarea rounded-container" rows="2" bind:value={snippetDescription} placeholder="Brief note about when to use this snippet"></textarea>
-				</label>
-				<div class="flex justify-end gap-2 pt-2">
-					<button onclick={() => { showSaveSnippetModal = false; }} class="btn preset-outlined">Cancel</button>
-					<button onclick={confirmSaveSnippet} disabled={!snippetName.trim()} class="btn preset-filled-primary-500 disabled:opacity-40">Save</button>
-				</div>
-			</Dialog.Content>
-		</Dialog.Positioner>
-	</Dialog>
-{/if}
+<Dialog bind:open={showSaveSnippetModal} title="Save as snippet" size="sm">
+	<div class="form">
+		<Input
+			label="Name"
+			bind:value={snippetName}
+			onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') confirmSaveSnippet(); }}
+		/>
+		<Textarea label="Description (optional)" rows={2} bind:value={snippetDescription} placeholder="When to use this snippet" />
+	</div>
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => { showSaveSnippetModal = false; }}>Cancel</Button>
+		<Button onclick={confirmSaveSnippet} disabled={!snippetName.trim()}>Save</Button>
+	{/snippet}
+</Dialog>
+
+<style>
+	.toolbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--nd-space-2);
+		margin: var(--nd-space-5) 0 var(--nd-space-4);
+		padding-bottom: var(--nd-space-3);
+		border-bottom: 1px solid var(--nd-line);
+	}
+	.group { display: flex; gap: var(--nd-space-1); }
+	.right { display: flex; align-items: center; gap: var(--nd-space-3); margin-left: auto; }
+	.save { min-width: 6rem; text-align: right; }
+	.ok { color: var(--nd-success); }
+
+	.menu-anchor { position: relative; display: flex; }
+	.scrim { position: fixed; inset: 0; z-index: 10; }
+	.menu {
+		position: absolute;
+		top: calc(100% + 4px);
+		left: 0;
+		z-index: 20;
+		width: 16rem;
+		max-height: 20rem;
+		overflow-y: auto;
+		padding-bottom: var(--nd-space-2);
+		border: 1px solid var(--nd-line-strong);
+		background: var(--nd-surface-3);
+	}
+	.menu-head { margin: 0; padding: var(--nd-space-3) var(--nd-space-3) var(--nd-space-1); font-size: var(--nd-text-2xs); }
+	.menu-empty { margin: 0; padding: var(--nd-space-1) var(--nd-space-3); color: var(--nd-text-mute); font-size: var(--nd-text-xs); }
+	.item {
+		display: flex;
+		align-items: center;
+		gap: var(--nd-space-2);
+		width: 100%;
+		padding: var(--nd-space-2) var(--nd-space-3);
+		border: 0;
+		background: transparent;
+		text-align: left;
+		font-size: var(--nd-text-sm);
+		cursor: pointer;
+	}
+	.item.stacked { flex-direction: column; align-items: flex-start; gap: 0; }
+	.item:hover, .item:focus-visible { background: var(--nd-accent-tint); }
+	.sub { color: var(--nd-text-mute); font-size: var(--nd-text-xs); }
+	.truncate { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+	.work.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--nd-space-6); align-items: start; }
+	.tree { display: flex; flex-direction: column; gap: var(--nd-space-2); min-height: 200px; }
+	.tree-empty { display: grid; place-items: center; min-height: 6rem; border: 1px solid var(--nd-line); }
+	.preview { position: sticky; top: calc(var(--nd-topbar-h) + var(--nd-space-4)); max-height: calc(100dvh - var(--nd-topbar-h) - var(--nd-statusbar-h) - var(--nd-space-8)); overflow-y: auto; }
+	.preview-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--nd-space-2); }
+
+	.float { position: fixed; right: var(--nd-space-6); bottom: calc(var(--nd-statusbar-h) + var(--nd-space-4)); z-index: 40; }
+	.form { display: flex; flex-direction: column; gap: var(--nd-space-4); }
+
+	@media (max-width: 1100px) {
+		.work.split { grid-template-columns: 1fr; }
+		.preview { position: static; max-height: none; }
+	}
+</style>

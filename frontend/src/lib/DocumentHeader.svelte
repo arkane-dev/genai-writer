@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { SettingsIcon, FileTextIcon } from '@lucide/svelte';
-	import { fade } from 'svelte/transition';
+	import { Panel, Input, Button, Checkbox, Tag } from '@cyberpunk-apps/neondeck';
 	import type { DocumentOptions } from '$lib/types';
 
 	let {
@@ -9,79 +8,44 @@
 			generateExecutiveSummary: false,
 			generateIntroduction: false,
 			generateConclusion: false,
-			generateReferences: false,
+			generateReferences: false
 		}),
-		showOptions = $bindable(false),
+		showOptions = $bindable(false)
 	} = $props();
 
-	function getActiveOptionsCount(): number {
-		return Object.values(documentOptions).filter((v) => v).length;
-	}
+	const activeCount = $derived(Object.values(documentOptions).filter(Boolean).length);
 </script>
 
-<div class="bg-white rounded-xl shadow-sm border border-surface-200 p-6 mb-6">
-	<div class="flex items-start gap-4">
-		<div class="flex-1">
-			<label for="docTitle" class="label pb-2">
-				<span class="label-text font-semibold text-surface-700">Document Title</span>
-			</label>
-			<input
-				id="docTitle"
-				class="input h-12 text-lg font-medium"
-				type="text"
-				placeholder="Enter your document title..."
-				bind:value={documentTitle}
-			/>
+<Panel title="Document" index="01" meta="{activeCount} extra section{activeCount === 1 ? '' : 's'}">
+	<div class="head">
+		<div class="title">
+			<Input label="Title" placeholder="Name the document" bind:value={documentTitle} />
 		</div>
-		<button
-			class="btn preset-outlined mt-6"
-			onclick={() => (showOptions = !showOptions)}
-			class:btn-active={showOptions}
-		>
-			<SettingsIcon class="w-4 h-4" />
+		<Button variant="outline" onclick={() => (showOptions = !showOptions)} aria-expanded={showOptions}>
 			Options
-			{#if getActiveOptionsCount() > 0}
-				<span class="badge preset-filled-primary-500 ml-2">{getActiveOptionsCount()}</span>
-			{/if}
-		</button>
+			{#if activeCount > 0}<Tag solid>{activeCount}</Tag>{/if}
+		</Button>
 	</div>
 
 	{#if showOptions}
-		<div in:fade={{ duration: 200 }} class="mt-4 pt-4 border-t border-surface-200">
-			<h3 class="text-sm font-semibold text-surface-600 mb-3 flex items-center gap-2">
-				<FileTextIcon class="w-4 h-4" />
-				Generation Options
-			</h3>
-			<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-				<label class="flex items-center gap-3 p-3 rounded-lg bg-surface-50 hover:bg-surface-100 transition-colors cursor-pointer">
-					<input class="checkbox checkbox-sm" type="checkbox" bind:checked={documentOptions.generateExecutiveSummary} />
-					<div>
-						<p class="text-sm font-medium">Executive Summary</p>
-						<p class="text-xs text-surface-500">Generate a concise overview</p>
-					</div>
-				</label>
-				<label class="flex items-center gap-3 p-3 rounded-lg bg-surface-50 hover:bg-surface-100 transition-colors cursor-pointer">
-					<input class="checkbox checkbox-sm" type="checkbox" bind:checked={documentOptions.generateIntroduction} />
-					<div>
-						<p class="text-sm font-medium">Introduction</p>
-						<p class="text-xs text-surface-500">Add document intro section</p>
-					</div>
-				</label>
-				<label class="flex items-center gap-3 p-3 rounded-lg bg-surface-50 hover:bg-surface-100 transition-colors cursor-pointer">
-					<input class="checkbox checkbox-sm" type="checkbox" bind:checked={documentOptions.generateConclusion} />
-					<div>
-						<p class="text-sm font-medium">Conclusion</p>
-						<p class="text-xs text-surface-500">Add concluding section</p>
-					</div>
-				</label>
-				<label class="flex items-center gap-3 p-3 rounded-lg bg-surface-50 hover:bg-surface-100 transition-colors cursor-pointer">
-					<input class="checkbox checkbox-sm" type="checkbox" bind:checked={documentOptions.generateReferences} />
-					<div>
-						<p class="text-sm font-medium">References</p>
-						<p class="text-xs text-surface-500">Compile all references</p>
-					</div>
-				</label>
+		<div class="opts">
+			<p class="nd-label">Generate extra sections</p>
+			<div class="grid">
+				<Checkbox label="Executive summary" hint="A short overview of the whole document" bind:checked={documentOptions.generateExecutiveSummary} />
+				<Checkbox label="Introduction" hint="An opening section" bind:checked={documentOptions.generateIntroduction} />
+				<Checkbox label="Conclusion" hint="A closing section" bind:checked={documentOptions.generateConclusion} />
+				<Checkbox label="References" hint="Every reference, collected in one list" bind:checked={documentOptions.generateReferences} />
 			</div>
 		</div>
 	{/if}
-</div>
+</Panel>
+
+<style>
+	.head { display: flex; align-items: flex-end; gap: var(--nd-space-4); }
+	.title { flex: 1; min-width: 0; }
+	.opts { margin-top: var(--nd-space-4); padding-top: var(--nd-space-4); border-top: 1px solid var(--nd-line); }
+	.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--nd-space-4); margin-top: var(--nd-space-3); }
+	@media (max-width: 720px) {
+		.grid { grid-template-columns: 1fr; }
+	}
+</style>

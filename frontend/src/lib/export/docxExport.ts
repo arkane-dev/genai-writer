@@ -171,7 +171,7 @@ async function nodeToDocx(node: TreeNode, depth: number): Promise<Array<Paragrap
 	return items;
 }
 
-export async function downloadDocx(tree: TreeNode[], title: string): Promise<void> {
+export async function downloadDocx(tree: TreeNode[], title: string): Promise<string | null> {
 	const children: Array<Paragraph | Table> = [];
 	if (title) {
 		children.push(new Paragraph({ text: title, heading: HeadingLevel.TITLE }));
@@ -185,7 +185,7 @@ export async function downloadDocx(tree: TreeNode[], title: string): Promise<voi
 	});
 
 	const blob = await Packer.toBlob(doc);
-	triggerDownload(blob, `${sanitize(title || 'document')}.docx`);
+	return triggerDownload(blob, `${sanitize(title || 'document')}.docx`);
 }
 
 function sanitize(s: string): string {

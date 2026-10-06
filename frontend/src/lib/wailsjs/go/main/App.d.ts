@@ -10,6 +10,8 @@ export function FetchStart(arg1:main.FetchRequest):Promise<main.FetchHead>;
 
 export function GetSettings():Promise<main.Settings>;
 
+export function SaveFile(arg1:string,arg2:string):Promise<string>;
+
 export function SaveSettings(arg1:main.Settings):Promise<void>;
 
 export function SettingsPath():Promise<string>;

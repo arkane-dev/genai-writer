@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { XIcon, RotateCcwIcon, ChevronDownIcon, ChevronRightIcon } from '@lucide/svelte';
+	import { ChevronRightIcon } from '@lucide/svelte';
+	import { Dialog, Button, Tag } from '@cyberpunk-apps/neondeck';
 	import { store, library, type Snapshot } from '$lib/platform/store.svelte';
 	import { diffTrees, formatTimestamp, relativeTime, formatDiffValue, type DiffEntry } from './history';
 
@@ -17,6 +18,7 @@
 
 	let snapshots: Snapshot[] = $state([]);
 	let expandedId: number | null = $state(null);
+	let open = $state(true);
 
 	$effect(() => {
 		const docId = documentId; // capture for reactive tracking
@@ -41,124 +43,94 @@
 	}
 </script>
 
-<!-- Backdrop -->
-<div
-	class="fixed inset-0 z-40 flex justify-end"
-	role="dialog"
-	aria-modal="true"
-	aria-label="Document history"
->
-	<div class="flex-1 bg-black/20" onclick={onClose} role="presentation"></div>
+<Dialog bind:open title="History" placement="right" size="md" meta="{snapshots.length} snapshot{snapshots.length === 1 ? '' : 's'}" onclose={onClose}>
+	{#if snapshots.length === 0}
+		<p class="nd-meta">&gt; no history yet</p>
+	{:else}
+		<ol class="timeline">
+			{#each snapshots as snapshot, i (snapshot.id)}
+				{@const isCurrent = snapshot.id === currentSnapshotId}
+				{@const isExpanded = expandedId === snapshot.id}
+				{@const diffs = isExpanded ? getDiff(snapshot, i) : []}
+				<li class:current={isCurrent}>
+					<span class="dot" aria-hidden="true"></span>
+					<div class="row">
+						<button
+							class="toggle"
+							class:open={isExpanded}
+							onclick={() => toggleExpand(snapshot.id!)}
+							aria-expanded={isExpanded}
+							aria-label="Show changes in “{snapshot.message}”"
+						>
+							<ChevronRightIcon size={14} />
+						</button>
+						<div class="what">
+							<p class="msg">{snapshot.message}</p>
+							<p class="nd-meta" title={formatTimestamp(snapshot.timestamp)}>{relativeTime(snapshot.timestamp)} · {formatTimestamp(snapshot.timestamp)}</p>
+						</div>
+						{#if isCurrent}
+							<Tag tone="success" dot>current</Tag>
+						{:else}
+							<Button size="sm" variant="outline" onclick={() => onRestore(snapshot)} title="Restore the document to this state">Restore</Button>
+						{/if}
+					</div>
 
-	<!-- Panel -->
-	<div class="flex h-full w-[500px] flex-col bg-white shadow-2xl">
-		<!-- Header -->
-		<div class="flex items-center justify-between border-b border-surface-200 px-4 py-3">
-			<h2 class="text-base font-semibold">Document History</h2>
-			<button class="btn-icon preset-outlined" onclick={onClose}>
-				<XIcon class="h-4 w-4" />
-			</button>
-		</div>
-
-		<!-- Timeline -->
-		<div class="flex-1 overflow-auto">
-			{#if snapshots.length === 0}
-				<p class="p-6 text-sm italic text-surface-400">No history yet.</p>
-			{:else}
-				<ol class="relative border-l border-surface-200 ml-5 my-4 mr-4 space-y-1">
-					{#each snapshots as snapshot, i (snapshot.id)}
-						{@const isCurrent = snapshot.id === currentSnapshotId}
-						{@const isExpanded = expandedId === snapshot.id}
-						{@const diffs = isExpanded ? getDiff(snapshot, i) : []}
-
-						<li class="ml-4">
-							<!-- Timeline dot -->
-							<div
-								class="absolute -left-1.5 mt-2 h-3 w-3 rounded-full border-2 border-white {isCurrent
-									? 'bg-primary-500'
-									: 'bg-surface-300'}"
-							></div>
-
-							<div
-								class="rounded-lg border p-3 transition-colors {isCurrent
-									? 'border-primary-200 bg-primary-50'
-									: 'border-surface-100 bg-white hover:border-surface-200 hover:bg-surface-50'}"
-							>
-								<!-- Row: expand toggle + message + restore -->
-								<div class="flex items-start gap-2">
-									<button
-										class="mt-0.5 flex-shrink-0 text-surface-400 hover:text-surface-700"
-										onclick={() => toggleExpand(snapshot.id!)}
-										aria-label="Toggle diff"
-									>
-										{#if isExpanded}
-											<ChevronDownIcon class="h-4 w-4" />
+					{#if isExpanded}
+						<div class="diffs">
+							{#if diffs.length === 0}
+								<p class="nd-meta">&gt; first snapshot, nothing to compare</p>
+							{:else}
+								{#each diffs as diff, j (j)}
+									<div class="diff {diff.type}">
+										{#if diff.type === 'added'}
+											<b>+</b> [{diff.nodeType.replace('_', ' ')}] "{diff.nodeLabel}"
+										{:else if diff.type === 'removed'}
+											<b>−</b> [{diff.nodeType.replace('_', ' ')}] "{diff.nodeLabel}"
 										{:else}
-											<ChevronRightIcon class="h-4 w-4" />
-										{/if}
-									</button>
-
-									<div class="min-w-0 flex-1">
-										<p class="truncate text-sm font-medium text-surface-800">
-											{snapshot.message}
-											{#if isCurrent}
-												<span class="ml-2 text-xs font-normal text-primary-600">● current</span>
-											{/if}
-										</p>
-										<p class="mt-0.5 text-xs text-surface-400" title={formatTimestamp(snapshot.timestamp)}>
-											{relativeTime(snapshot.timestamp)} · {formatTimestamp(snapshot.timestamp)}
-										</p>
-									</div>
-
-									<button
-										class="flex flex-shrink-0 items-center gap-1 rounded border border-surface-200 bg-white px-2 py-1 text-xs text-surface-600 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
-										onclick={() => onRestore(snapshot)}
-										title="Restore document to this state"
-									>
-										<RotateCcwIcon class="h-3 w-3" /> Restore
-									</button>
-								</div>
-
-								<!-- Diff entries -->
-								{#if isExpanded}
-									<div class="ml-6 mt-2 space-y-1">
-										{#if diffs.length === 0}
-											<p class="text-xs italic text-surface-400">Initial snapshot — no previous state to compare.</p>
-										{:else}
-											{#each diffs as diff}
-												<div
-													class="rounded px-2 py-1.5 font-mono text-xs {diff.type === 'added'
-														? 'bg-green-50 text-green-800'
-														: diff.type === 'removed'
-															? 'bg-red-50 text-red-800'
-															: 'bg-amber-50 text-amber-800'}"
-												>
-													{#if diff.type === 'added'}
-														<span class="font-semibold">+</span>
-														[{diff.nodeType.replace('_', ' ')}] "{diff.nodeLabel}"
-													{:else if diff.type === 'removed'}
-														<span class="font-semibold">−</span>
-														[{diff.nodeType.replace('_', ' ')}] "{diff.nodeLabel}"
-													{:else}
-														<span class="font-semibold">~</span>
-														"{diff.nodeLabel}" › {diff.field?.replace(/_/g, ' ')}
-														<div class="mt-1 break-all pl-3 text-red-700">
-															− {formatDiffValue(diff.oldValue)}
-														</div>
-														<div class="break-all pl-3 text-green-700">
-															+ {formatDiffValue(diff.newValue)}
-														</div>
-													{/if}
-												</div>
-											{/each}
+											<b>~</b> "{diff.nodeLabel}" › {diff.field?.replace(/_/g, ' ')}
+											<div class="old">− {formatDiffValue(diff.oldValue)}</div>
+											<div class="new">+ {formatDiffValue(diff.newValue)}</div>
 										{/if}
 									</div>
-								{/if}
-							</div>
-						</li>
-					{/each}
-				</ol>
-			{/if}
-		</div>
-	</div>
-</div>
+								{/each}
+							{/if}
+						</div>
+					{/if}
+				</li>
+			{/each}
+		</ol>
+	{/if}
+</Dialog>
+
+<style>
+	.timeline { position: relative; margin: 0; padding: 0 0 0 var(--nd-space-5); list-style: none; border-left: 1px solid var(--nd-line-strong); }
+	li { position: relative; padding: var(--nd-space-2) 0 var(--nd-space-3); border-bottom: 1px solid var(--nd-line); }
+	.dot { position: absolute; top: 0.95rem; left: calc(var(--nd-space-5) * -1 - 4px); width: 7px; height: 7px; background: var(--nd-line-strong); }
+	.current .dot { background: var(--nd-success); box-shadow: 0 0 6px var(--nd-success); }
+	.row { display: flex; align-items: flex-start; gap: var(--nd-space-2); }
+	.toggle {
+		display: grid;
+		place-items: center;
+		flex: none;
+		width: 1.5rem;
+		height: 1.5rem;
+		border: 0;
+		background: transparent;
+		color: var(--nd-text-mute);
+		cursor: pointer;
+		transition: transform var(--nd-dur-fast) var(--nd-ease);
+	}
+	.toggle:hover { color: var(--nd-text); }
+	.toggle.open { transform: rotate(90deg); color: var(--nd-accent); }
+	.what { flex: 1; min-width: 0; }
+	.msg { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--nd-text-sm); }
+	.what .nd-meta { margin: 0; }
+	.diffs { display: flex; flex-direction: column; gap: var(--nd-space-1); margin: var(--nd-space-2) 0 0 var(--nd-space-6); }
+	.diff { padding: var(--nd-space-1) var(--nd-space-2); font-family: var(--nd-font-mono); font-size: var(--nd-text-xs); overflow-wrap: anywhere; border-left: 2px solid var(--t); background: color-mix(in srgb, var(--t) 8%, transparent); }
+	.diff.added { --t: var(--nd-success); }
+	.diff.removed { --t: var(--nd-danger); }
+	.diff.changed { --t: var(--nd-warning); }
+	.diff b { color: var(--t); }
+	.old { padding-left: var(--nd-space-3); color: var(--nd-danger); }
+	.new { padding-left: var(--nd-space-3); color: var(--nd-success); }
+</style>

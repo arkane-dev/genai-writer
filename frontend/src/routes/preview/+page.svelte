@@ -6,16 +6,7 @@
 	import { store } from '$lib/platform/store.svelte';
 	import { serializeTree } from '$lib/history';
 	import ExportModal from '$lib/ExportModal.svelte';
-	import {
-		ArrowLeftIcon,
-		DownloadIcon,
-		SparklesIcon,
-		CheckCircle2Icon,
-		AlertCircleIcon,
-		SquareIcon,
-		Loader2Icon,
-		ChevronDownIcon,
-	} from '@lucide/svelte';
+	import { Button, Tag } from '@cyberpunk-apps/neondeck';
 	import type { TreeNode } from '$lib/types';
 	import katex from 'katex';
 	import 'katex/dist/katex.min.css';
@@ -112,97 +103,50 @@
 </script>
 
 <svelte:head>
-	<title>{generationState.documentTitle || 'Preview'} — AI Writer</title>
+	<title>{generationState.documentTitle || 'Preview'} · GenAI Writer</title>
 </svelte:head>
 
-<!-- Sticky toolbar -->
-<div class="sticky top-0 z-10 mb-8 bg-surface-50/95 backdrop-blur -mx-4 px-4">
-	<div class="flex items-center gap-3 pb-4 border-b border-surface-200">
-		<button
-			onclick={() => goto('#/')}
-			class="btn preset-outlined flex items-center gap-1.5"
-		>
-			<ArrowLeftIcon class="size-4" /> Editor
-		</button>
+<div class="hud">
+	<div class="bar">
+		<Button variant="ghost" onclick={() => goto('#/')}>← Editor</Button>
 
-		<div class="flex-1 min-w-0">
+		<div class="state" role="status">
 			{#if generationState.status === 'generating'}
-				<span class="text-sm text-surface-500 flex items-center gap-1.5 truncate">
-					<SparklesIcon class="size-3.5 shrink-0 animate-pulse text-secondary-500" />
-					{generationState.currentNodeLabel
-						? `Generating: ${generationState.currentNodeLabel}`
-						: 'Generating…'}
-				</span>
+				<span class="nd-mono live">&gt; GENERATING{generationState.currentNodeLabel ? `: ${generationState.currentNodeLabel}` : ''}<span class="nd-cursor"></span></span>
 			{:else if generationState.status === 'done'}
-				<span class="text-sm text-success-600 flex items-center gap-1.5">
-					<CheckCircle2Icon class="size-3.5 shrink-0" /> Done — {generationState.completedNodes.length} node{generationState.completedNodes.length === 1 ? '' : 's'} generated
-				</span>
+				<Tag tone="success" dot>done · {generationState.completedNodes.length} node{generationState.completedNodes.length === 1 ? '' : 's'}</Tag>
 			{:else if generationState.status === 'error'}
-				<span class="text-sm text-error-600 flex items-center gap-1.5 truncate">
-					<AlertCircleIcon class="size-3.5 shrink-0" />
-					{generationState.error ?? 'Generation failed'}
-				</span>
+				<Tag tone="danger" dot>{generationState.error ?? 'generation failed'}</Tag>
 			{/if}
 		</div>
 
-		<!-- Progress log toggle -->
 		{#if generationState.completedNodes.length > 0 || generationState.status === 'generating'}
-			<button
-				onclick={() => { showLog = !showLog; }}
-				class="btn preset-outlined flex items-center gap-1.5 text-xs"
-				title="Toggle progress log"
-			>
-				<ChevronDownIcon class="size-3.5 transition-transform {showLog ? 'rotate-180' : ''}" />
-				Log ({generationState.completedNodes.length}{generationState.status === 'generating' ? '+1' : ''})
-			</button>
+			<Button variant="ghost" onclick={() => { showLog = !showLog; }} aria-expanded={showLog}>
+				Log {generationState.completedNodes.length}{generationState.status === 'generating' ? '+1' : ''} {showLog ? '▴' : '▾'}
+			</Button>
 		{/if}
-
 		{#if generationState.status === 'generating' && doCancel}
-			<button
-				onclick={doCancel}
-				class="btn preset-outlined flex items-center gap-1.5"
-			>
-				<SquareIcon class="size-4" /> Stop
-			</button>
+			<Button variant="outline" accent="red" onclick={doCancel}>Stop</Button>
 		{/if}
-
-		<button
-			onclick={() => (showExport = true)}
-			class="btn preset-outlined flex items-center gap-1.5"
-		>
-			<DownloadIcon class="size-4" /> Download
-		</button>
+		<Button variant="outline" onclick={() => (showExport = true)}>Export</Button>
 	</div>
 
-	<!-- Progress log panel -->
 	{#if showLog}
-		<div class="py-2 border-b border-surface-200 max-h-40 overflow-y-auto">
-			<ol class="space-y-0.5">
-				{#each generationState.completedNodes as label, i}
-					<li class="flex items-center gap-2 text-xs text-surface-600 px-1 py-0.5">
-						<CheckCircle2Icon class="size-3 shrink-0 text-success-500" />
-						<span class="truncate">{i + 1}. {label}</span>
-					</li>
-				{/each}
-				{#if generationState.status === 'generating' && generationState.currentNodeLabel}
-					<li class="flex items-center gap-2 text-xs text-secondary-600 px-1 py-0.5">
-						<Loader2Icon class="size-3 shrink-0 animate-spin" />
-						<span class="truncate">{generationState.completedNodes.length + 1}. {generationState.currentNodeLabel}</span>
-					</li>
-				{/if}
-			</ol>
-		</div>
+		<ol class="log">
+			{#each generationState.completedNodes as label, i (i)}
+				<li><span class="ok">[ok]</span> {String(i + 1).padStart(2, '0')} {label}</li>
+			{/each}
+			{#if generationState.status === 'generating' && generationState.currentNodeLabel}
+				<li class="now"><span>[..]</span> {String(generationState.completedNodes.length + 1).padStart(2, '0')} {generationState.currentNodeLabel}</li>
+			{/if}
+		</ol>
 	{/if}
 </div>
 
-<!-- Document -->
-<article class="max-w-[780px] mx-auto pb-16">
-	{#if generationState.documentTitle}
-		<h1 class="text-3xl font-bold mb-8 text-surface-900">{generationState.documentTitle}</h1>
-	{/if}
-
+<article class="doc nd-paper">
+	{#if generationState.documentTitle}<h1>{generationState.documentTitle}</h1>{/if}
 	{#if generationState.tree.length === 0}
-		<p class="text-surface-400 italic">No content to display.</p>
+		<p class="hint">No content to show.</p>
 	{:else}
 		{#each generationState.tree as node (node.id)}
 			{@render renderNode(node, 0)}
@@ -211,14 +155,8 @@
 </article>
 
 {#if showExport}
-	<ExportModal
-		tree={generationState.tree}
-		documentTitle={generationState.documentTitle}
-		onClose={() => (showExport = false)}
-	/>
+	<ExportModal tree={generationState.tree} documentTitle={generationState.documentTitle} onClose={() => (showExport = false)} />
 {/if}
-
-<!-- ── Render snippets ─────────────────────────────────────────────────── -->
 
 {#snippet renderNode(node: TreeNode, depth: number)}
 	{#if node.type === 'section'}
@@ -229,142 +167,114 @@
 {/snippet}
 
 {#snippet renderSection(node: TreeNode, depth: number)}
-	<div class="mt-8 first:mt-0">
-		{#if depth === 0}
-			<h2 class="text-2xl font-bold text-surface-900 mb-4 pb-1 border-b border-surface-200">{node.label}</h2>
-		{:else if depth === 1}
-			<h3 class="text-xl font-semibold text-surface-800 mb-3">{node.label}</h3>
-		{:else if depth === 2}
-			<h4 class="text-lg font-medium text-surface-800 mb-2">{node.label}</h4>
-		{:else}
-			<h5 class="text-base font-medium text-surface-700 mb-2">{node.label}</h5>
-		{/if}
-
+	<div class="sec d{Math.min(depth, 3)}">
+		<svelte:element this={'h' + Math.min(depth + 2, 5)}>{node.label}</svelte:element>
 		{#each node.children as child (child.id)}
 			{@render renderNode(child, depth + 1)}
 		{/each}
 	</div>
 {/snippet}
 
+{#snippet cursor()}<span class="nd-cursor" aria-hidden="true"></span>{/snippet}
+
 {#snippet renderContent(node: TreeNode)}
 	{@const isActive = generationState.currentNodeId === node.id}
-	<div class="mb-4">
+	{@const queued = node.generate && generationState.status === 'generating'}
+	<div class="block">
 		{#if node.type === 'text_block'}
 			{#if node.generated_content !== null}
 				{@const paras = node.generated_content.split('\n\n').filter(Boolean)}
-				{#if paras.length > 0}
-					{#each paras as para, i}
-						<p class="mb-3 leading-relaxed text-surface-800">
-							{para}{#if isActive && i === paras.length - 1}<span
-									class="inline-block w-0.5 h-[1.1em] bg-secondary-500 animate-pulse ml-0.5 align-text-bottom"
-								></span>{/if}
-						</p>
-					{/each}
-				{:else if isActive}
-					<p class="mb-3">
-						<span class="inline-block w-0.5 h-[1.1em] bg-secondary-500 animate-pulse align-text-bottom"
-						></span>
-					</p>
-				{/if}
-			{:else if node.generate && generationState.status === 'generating'}
-				<div class="space-y-2 mb-3">
-					<div class="h-4 rounded bg-surface-200 animate-pulse w-full"></div>
-					<div class="h-4 rounded bg-surface-200 animate-pulse w-11/12"></div>
-					<div class="h-4 rounded bg-surface-200 animate-pulse w-4/5"></div>
-				</div>
-			{:else if node.content}
-				{#each node.content.split('\n\n').filter(Boolean) as para}
-					<p class="mb-3 leading-relaxed text-surface-600">{para}</p>
+				{#each paras as para, i (i)}
+					<p>{para}{#if isActive && i === paras.length - 1}{@render cursor()}{/if}</p>
 				{/each}
+				{#if paras.length === 0 && isActive}<p>{@render cursor()}</p>{/if}
+			{:else if queued}
+				<div class="wait nd-hatch" style:height="4.5rem"><span>queued</span></div>
+			{:else if node.content}
+				{#each node.content.split('\n\n').filter(Boolean) as para, i (i)}<p>{para}</p>{/each}
 			{/if}
 
 		{:else if node.type === 'code'}
-			<pre
-				class="bg-surface-900 text-surface-50 p-4 rounded-lg overflow-x-auto my-4 text-sm font-mono leading-relaxed"
-			><code>{node.generated_content ?? node.content ?? ''}{#if isActive}<span
-						class="inline-block w-0.5 h-[1.1em] bg-secondary-500 animate-pulse ml-0.5 align-text-bottom"
-					></span>{/if}</code></pre>
+			<pre><code>{node.generated_content ?? node.content ?? ''}{#if isActive}{@render cursor()}{/if}</code></pre>
 
 		{:else if node.type === 'image'}
 			{#if node.imageUrl}
-				<figure class="my-4">
-					<img
-						src={node.imageUrl}
-						alt={node.altText || node.label}
-						class="max-w-full rounded-lg shadow"
-					/>
-					{#if node.altText}
-						<figcaption class="text-sm text-center text-surface-500 mt-2 italic"
-							>{node.altText}</figcaption
-						>
-					{/if}
+				<figure>
+					<img src={node.imageUrl} alt={node.altText || node.label} />
+					{#if node.altText}<figcaption>{node.altText}</figcaption>{/if}
 				</figure>
 			{:else if isActive}
-				<div
-					class="border border-surface-200 rounded-lg h-40 flex items-center justify-center gap-2 my-4 text-surface-500 text-sm"
-				>
-					<Loader2Icon class="size-4 animate-spin shrink-0" />
-					Generating image…
-				</div>
-			{:else if node.generate && generationState.status === 'generating'}
-				<div
-					class="bg-surface-100 h-40 rounded-lg flex items-center justify-center my-4 text-surface-400 text-sm border border-surface-200 border-dashed"
-				>
-					Image queued…
-				</div>
+				<div class="wait nd-hatch" style:height="10rem"><span>rendering image{@render cursor()}</span></div>
+			{:else if queued}
+				<div class="wait nd-hatch" style:height="10rem"><span>image queued</span></div>
 			{/if}
 
 		{:else if node.type === 'equation'}
-			<div class="my-4 py-2 text-center overflow-x-auto">
+			<div class="eq">
 				{#if node.generated_content}
 					{@html renderEquation(node.generated_content)}
 				{:else if isActive}
-					<span class="inline-block w-0.5 h-[1.1em] bg-secondary-500 animate-pulse align-text-bottom"
-					></span>
-				{:else if node.generate && generationState.status === 'generating'}
-					<div class="h-8 rounded bg-surface-200 animate-pulse w-48 mx-auto"></div>
+					{@render cursor()}
+				{:else if queued}
+					<div class="wait nd-hatch" style:height="2.5rem"><span>queued</span></div>
 				{/if}
 			</div>
 
 		{:else if node.type === 'table'}
-			<div class="my-4 overflow-x-auto">
+			<div class="table-wrap">
 				{#if node.generated_content}
 					{@const parsed = parseMarkdownTable(node.generated_content)}
 					{#if parsed}
-						<table class="w-full text-sm border-collapse">
-							<thead>
-								<tr class="bg-surface-100">
-									{#each parsed.headers as h}
-										<th class="border border-surface-300 px-3 py-2 text-left font-semibold text-surface-800">{h}</th>
-									{/each}
-								</tr>
-							</thead>
+						<table>
+							<thead><tr>{#each parsed.headers as h, hi (hi)}<th>{h}</th>{/each}</tr></thead>
 							<tbody>
-								{#each parsed.rows as row, ri}
-									<tr class={ri % 2 === 1 ? 'bg-surface-50' : ''}>
-										{#each parsed.headers as _h, i}
-											<td class="border border-surface-200 px-3 py-2 text-surface-700">{row[i] ?? ''}</td>
-										{/each}
-									</tr>
+								{#each parsed.rows as row, ri (ri)}
+									<tr>{#each parsed.headers as _h, i (i)}<td>{row[i] ?? ''}</td>{/each}</tr>
 								{/each}
 							</tbody>
 						</table>
-						{#if isActive}<span class="inline-block w-0.5 h-[1.1em] bg-secondary-500 animate-pulse ml-0.5 align-text-bottom"></span>{/if}
+						{#if isActive}{@render cursor()}{/if}
 					{:else}
-						<pre class="text-sm font-mono whitespace-pre-wrap text-surface-800">{node.generated_content}{#if isActive}<span class="inline-block w-0.5 h-[1.1em] bg-secondary-500 animate-pulse ml-0.5 align-text-bottom"></span>{/if}</pre>
+						<pre><code>{node.generated_content}{#if isActive}{@render cursor()}{/if}</code></pre>
 					{/if}
-				{:else if node.generate && generationState.status === 'generating'}
-					<div class="space-y-1.5">
-						<div class="h-8 rounded bg-surface-200 animate-pulse w-full"></div>
-						{#if isActive}
-							<div class="h-7 rounded bg-surface-100 animate-pulse w-full"></div>
-							<div class="h-7 rounded bg-surface-100 animate-pulse w-full"></div>
-						{:else}
-							<div class="h-7 rounded bg-surface-100 animate-pulse w-4/5"></div>
-						{/if}
-					</div>
+				{:else if queued}
+					<div class="wait nd-hatch" style:height="6rem"><span>{isActive ? 'building table' : 'queued'}</span></div>
 				{/if}
 			</div>
 		{/if}
 	</div>
 {/snippet}
+
+<style>
+	.hud { position: sticky; top: var(--nd-topbar-h); z-index: 10; margin: calc(var(--nd-space-6) * -1) 0 var(--nd-space-6); padding-top: var(--nd-space-3); background: var(--nd-bg); border-bottom: 1px solid var(--nd-line); }
+	.bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--nd-space-2); padding-bottom: var(--nd-space-3); }
+	.state { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+	.live { color: var(--nd-accent-2); font-size: var(--nd-text-sm); }
+	.log { max-height: 10rem; margin: 0; padding: var(--nd-space-2) 0 var(--nd-space-3); overflow-y: auto; list-style: none; border-top: 1px solid var(--nd-line); font-family: var(--nd-font-mono); font-size: var(--nd-text-xs); color: var(--nd-text-dim); }
+	.log .ok { color: var(--nd-success); }
+	.log .now { color: var(--nd-accent-2); }
+
+	/* Same paper document as the inline preview. Headings keep the author's case. */
+	.doc { max-width: 52rem; margin: 0 auto var(--nd-space-12); padding: var(--nd-space-10) var(--nd-space-10) var(--nd-space-12); font-size: var(--nd-text-md); line-height: 1.65; }
+	.doc :global(h1), .doc :global(h2), .doc :global(h3), .doc :global(h4), .doc :global(h5) { text-transform: none; letter-spacing: 0; }
+	h1 { margin-bottom: var(--nd-space-8); padding-bottom: var(--nd-space-3); border-bottom: 2px solid var(--nd-ink); font-size: var(--nd-text-4xl); }
+	.sec { margin-top: var(--nd-space-8); }
+	.sec:first-child { margin-top: 0; }
+	.d0 > :global(h2) { padding-bottom: var(--nd-space-1); border-bottom: 1px solid var(--nd-line); font-size: var(--nd-text-2xl); }
+	.d1 > :global(h3) { font-size: var(--nd-text-xl); }
+	.d2 > :global(h4) { font-size: var(--nd-text-lg); }
+	.block { margin-bottom: var(--nd-space-4); }
+	.block p { max-width: none; }
+	pre { background: var(--nd-ink); color: var(--nd-paper); border-left-color: var(--nd-cinnabar); }
+	figure { margin: var(--nd-space-4) 0; }
+	figure img { max-width: 100%; border: 1px solid var(--nd-line); }
+	figcaption { margin-top: var(--nd-space-2); color: var(--nd-text-mute); font-size: var(--nd-text-sm); text-align: center; }
+	.eq { overflow-x: auto; padding: var(--nd-space-2) 0; text-align: center; }
+	.table-wrap { overflow-x: auto; }
+	table { width: 100%; border-collapse: collapse; font-size: var(--nd-text-sm); }
+	th, td { padding: var(--nd-space-2) var(--nd-space-3); border: 1px solid var(--nd-line); text-align: left; }
+	th { border-bottom-color: var(--nd-ink); font-weight: 700; }
+	.hint { color: var(--nd-text-mute); }
+	.wait { display: grid; place-items: center; border: 1px solid var(--nd-line); }
+	.wait span { font-family: var(--nd-font-mono); font-size: var(--nd-text-xs); color: var(--nd-text-mute); text-transform: uppercase; }
+</style>
