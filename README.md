@@ -12,6 +12,21 @@ Wails v2 (Go) + SvelteKit (Svelte 5) + NEONDECK. Started as a browser app, then 
 - **Phase 2 (done):** NEONDECK look, frameless window with the AppShell title bar. The document preview is on paper (editorial mode).
   axe: 0 violations on every screen and dialog (WCAG 2.2 AA).
 
+## Download
+Linux and Windows builds are on the [Releases](https://github.com/arkane-dev/genai-writer/releases) page.
+Linux needs GTK 3 and WebKitGTK 4.1 (`webkit2gtk-4.1` on Arch/Manjaro, `libwebkit2gtk-4.1-0` on Debian/Ubuntu).
+The Windows build needs Windows 10 or 11. It isn't code-signed yet, so SmartScreen may warn the first time.
+
+## Build from source
+NEONDECK, the design system, lives in its own repo and installs from a folder beside this one:
+```bash
+mkdir cyberpunk_apps && cd cyberpunk_apps
+git clone https://github.com/arkane-dev/genai-writer
+git clone https://github.com/arkane-dev/neondeck sharable_assets
+(cd sharable_assets/neondeck && npm install && npm run build)
+```
+Needs Go ≥ 1.25, Node 22+, and the Wails CLI v2.14 (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0`).
+
 ## Setup
 ```bash
 source .venv/bin/activate          # node/npm live in the venv (uv + nodeenv)
