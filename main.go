@@ -19,15 +19,18 @@ const appName = "genai-writer"
 
 func main() {
 	app := NewApp()
+	store := NewStore(defaultLibraryRoot(appName))
+	kv := NewKV(appName)
 
 	err := wails.Run(&options.App{
-		Title:     appName,
+		Title:     "GenAI Writer",
 		Width:     1280,
 		Height:    820,
 		MinWidth:  960,
 		MinHeight: 640,
-		// NEONDECK draws its own title bar (AppShell top bar = drag region + window controls).
-		Frameless: true,
+		// Phase 1 keeps the OS frame: the ported UI has no title bar of its own yet.
+		// Phase 2 (NEONDECK restyle) switches back to Frameless with the AppShell title bar.
+		Frameless: false,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -36,6 +39,8 @@ func main() {
 		OnStartup:        app.startup,
 		Bind: []interface{}{
 			app,
+			store,
+			kv,
 		},
 		Linux: &linux.Options{
 			ProgramName:         appName,

@@ -1,56 +1,86 @@
-<!-- Dashboard: the NEONDECK app anatomy. Panel grid, readouts, a Go round trip. -->
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { SectionHeader, Panel, Readout, Meter, Button, Input, Tag } from '@cyberpunk-apps/neondeck';
-	import { backend, type AppInfo } from '#lib';
+	import { untrack } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { browser } from '$app/environment';
+	import DocumentHeader from '$lib/DocumentHeader.svelte';
+	import DocumentTree from '$lib/DocumentTree.svelte';
+	import type { DocumentOptions } from '$lib/types';
+	import { currentDoc } from '$lib/currentDoc.svelte';
+	import { store } from '$lib/platform/store.svelte';
+	import { FolderOpenIcon, XIcon } from '@lucide/svelte';
 
-	let info = $state<AppInfo | null>(null);
-	let msg = $state('hello');
-	let reply = $state('');
-	let busy = $state(false);
+	let documentTitle = $state('');
+	let documentOptions = $state<DocumentOptions>({
+		generateExecutiveSummary: false,
+		generateIntroduction: false,
+		generateConclusion: false,
+		generateReferences: false,
+	});
+	let showOptions = $state(false);
 
-	onMount(async () => (info = await backend.appInfo()));
+	let titleSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
-	async function ping() {
-		busy = true;
-		reply = await backend.ping(msg);
-		busy = false;
+	// Load the document title from DB when the active document changes.
+	// untrack() prevents this effect re-firing when documentTitle is written.
+	$effect(() => {
+		const id = currentDoc.id;
+		if (!id || !browser) return;
+		store.getDocument(id).then((doc) => {
+			if (doc) untrack(() => { documentTitle = doc.title; });
+		});
+	});
+
+	// Debounce-save title edits back to the DB.
+	$effect(() => {
+		const title = documentTitle;
+		const id = currentDoc.id;
+		if (!id || !browser) return;
+		if (titleSaveTimer) clearTimeout(titleSaveTimer);
+		titleSaveTimer = setTimeout(() => {
+			store.updateDocument(id, { title, updatedAt: Date.now() });
+			currentDoc.setTitle(title);
+		}, 800);
+	});
+
+	function closeDocument() {
+		currentDoc.close();
+		documentTitle = '';
 	}
 </script>
 
-<div class="content">
-	<SectionHeader index="01" zh="控制台" title="Dashboard" meta={info?.hostname ?? ''} />
-	<div class="dash">
-		<Panel title="System" index="02" meta={info?.os ?? '…'} class="span-2">
-			<div class="readouts">
-				<Readout label="CPUs" value={info?.cpus ?? '—'} neon />
-				<Readout label="Arch" value={info?.arch ?? '—'} />
-				<Readout label="Version" value={info?.version ?? '—'} />
-			</div>
-			<Meter label="Example load" value={42} meta="replace with real data" />
-		</Panel>
+<svelte:head>
+	<title>{documentTitle || 'AI Writer'}</title>
+</svelte:head>
 
-		<Panel title="Backend" index="03" accent="cyan" active>
-			<p>Round trip to Go through the generated bindings.</p>
-			<Input label="Message" bind:value={msg} />
-			<div class="row">
-				<Button arrow onclick={ping} disabled={busy}>Ping Go</Button>
-				{#if reply}<Tag tone="success">ok</Tag>{/if}
-			</div>
-			{#if reply}<pre>{reply}</pre>{/if}
-		</Panel>
+{#if currentDoc.id}
+	<!-- Breadcrumb / close bar -->
+	<div class="flex items-center gap-1.5 text-sm text-surface-500 mb-3 -mt-1">
+		<a href="#/documents" class="hover:text-primary-600 transition-colors">Documents</a>
+		<span class="text-surface-300">›</span>
+		<span class="flex-1 truncate text-surface-700 font-medium">{documentTitle || 'Untitled'}</span>
+		<button
+			onclick={closeDocument}
+			class="flex items-center gap-1 px-2 py-1 rounded text-surface-400 hover:text-surface-700 hover:bg-surface-100 transition-colors text-xs"
+			title="Close document"
+		>
+			<XIcon class="size-3.5" /> Close
+		</button>
 	</div>
-</div>
 
-<style>
-	.content { padding: var(--nd-space-10) var(--nd-gutter); }
-	.dash { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--nd-space-5); }
-	.dash :global(.span-2) { grid-column: span 2; }
-	.readouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--nd-space-6); margin-bottom: var(--nd-space-6); }
-	.row { display: flex; align-items: center; gap: var(--nd-space-3); margin-top: var(--nd-space-4); }
-	pre { margin-top: var(--nd-space-4); white-space: pre-wrap; }
-	@media (max-width: 1100px) {
-		.dash { grid-template-columns: 1fr; }
-		.dash :global(.span-2) { grid-column: auto; }
-	}
-</style>
+	<DocumentHeader bind:documentTitle bind:documentOptions bind:showOptions />
+	<DocumentTree {documentOptions} {documentTitle} documentId={currentDoc.id} />
+{:else}
+	<div class="flex flex-col items-center justify-center min-h-[60vh] gap-6 text-center">
+		<FolderOpenIcon class="size-16 text-surface-300" />
+		<div class="space-y-2">
+			<h2 class="h2">No document open</h2>
+			<p class="text-surface-500">Open an existing document or create a new one to get started.</p>
+		</div>
+		<button
+			onclick={() => goto('#/documents')}
+			class="btn preset-filled-primary-500"
+		>
+			Browse Documents
+		</button>
+	</div>
+{/if}

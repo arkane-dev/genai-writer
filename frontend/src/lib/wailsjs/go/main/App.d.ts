@@ -4,9 +4,11 @@ import {main} from '../models';
 
 export function AppInfo():Promise<main.AppInfo>;
 
-export function GetSettings():Promise<main.Settings>;
+export function FetchCancel(arg1:string):Promise<void>;
 
-export function Ping(arg1:string):Promise<string>;
+export function FetchStart(arg1:main.FetchRequest):Promise<main.FetchHead>;
+
+export function GetSettings():Promise<main.Settings>;
 
 export function SaveSettings(arg1:main.Settings):Promise<void>;
 

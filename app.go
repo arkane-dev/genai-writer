@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"runtime"
 )
@@ -15,14 +14,16 @@ const Version = "0.1.0"
 type App struct {
 	ctx      context.Context
 	settings *SettingsStore
+	fetch    *fetcher
 }
 
 func NewApp() *App {
-	return &App{settings: NewSettingsStore(appName)}
+	return &App{settings: NewSettingsStore(appName), fetch: newFetcher()}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.bindFetchEvents()
 }
 
 // AppInfo is what the status bar and dashboard show about the running build.
@@ -47,11 +48,6 @@ func (a *App) AppInfo() AppInfo {
 		Hostname:  host,
 		CPUs:      runtime.NumCPU(),
 	}
-}
-
-// Ping is the example round trip: frontend calls Go, Go answers. Replace with real work.
-func (a *App) Ping(msg string) string {
-	return fmt.Sprintf("> ACK %q from %s backend", msg, appName)
 }
 
 // GetSettings / SaveSettings persist user preferences (see settings.go).

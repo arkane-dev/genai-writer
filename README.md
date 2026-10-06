@@ -1,31 +1,56 @@
 # genai-writer
 
-Desktop app: Wails v2 (Go) + SvelteKit (Svelte 5) + NEONDECK.
+GenAI Writer as a desktop app. A document editor that puts what you say ahead of how it looks.
+You build a content tree of sections, text, images, code, equations and tables, and describe
+each part in plain words. The AI writes the prose.
+
+Wails v2 (Go) + SvelteKit (Svelte 5). Started as a browser app, then ported to Wails.
+
+## Status
+
+- **Phase 1 (done):** runs in Wails with a Go backend. The UI is still Skeleton + Tailwind.
+- **Phase 2 (next):** restyle to NEONDECK, drop Skeleton and Tailwind, frameless window with the AppShell title bar.
 
 ## Setup
 ```bash
 source .venv/bin/activate          # node/npm live in the venv (uv + nodeenv)
-make dev                           # live reload
+make dev                           # live reload; also serves the app at http://localhost:34115
 make build                         # binary in build/bin/
 make test                          # go vet + go test
 make bindings                      # after adding/changing exported Go methods
 ```
-UI-only work without Go: `cd frontend && npm run dev`. Backend calls fall back to stubs
-(`src/lib/backend.ts`), and the status bar shows `BROWSER` instead of `NATIVE`.
+`cd frontend && npm run dev` runs the UI in a plain browser. It then uses IndexedDB and browser
+fetch instead of Go, the same code path a hosted web build would use.
 
-## Layout
+## Where things live
+
+| What | Desktop | Browser |
+|---|---|---|
+| Documents, history, snippets | `~/Documents/GenAI Writer/` (override: `GENAI_WRITER_LIBRARY`) | IndexedDB |
+| API config and keys, open document | `~/.config/genai-writer/prefs.json`, mode 0600 | localStorage |
+
+The library is plain JSON. `library.json` lists folders and documents. Each document has a
+`documents/<id>/` folder with `history.json` and one file per snapshot. Images are stored once
+in `images/` by content hash, and snapshots refer to them.
+
+## How the backend works
+
 | Path | What |
 |---|---|
-| `main.go` | window options: frameless, NEONDECK background, `appName` |
-| `app.go` | exported methods = frontend API (`AppInfo`, `Ping`, settings) |
-| `settings.go` | JSON settings in `~/.config/<app>/settings.json`, atomic writes |
-| `env_linux.go` | disables WebKit's DMA-BUF renderer (blank window on NVIDIA) |
-| `frontend/src/lib/backend.ts` | typed Go calls + browser stubs. Call Go only through this |
+| `fetch.go` | streaming HTTP proxy. Every outbound request (models, SwarmUI, reference URLs) goes through Go: no CORS, cookies work, bodies stream back as events |
+| `store.go` | the document library on disk |
+| `kv.go` | small key-value state, the desktop replacement for localStorage |
+| `frontend/src/lib/platform/` | `net.ts` (fetch through Go), `store.svelte.ts` (Go or Dexie), `kv.ts`. App code calls these, never Go or Dexie directly |
 | `frontend/src/lib/wailsjs/` | generated bindings (`make bindings`), committed |
-| `frontend/src/lib/config.ts` | app name, brand, sidebar nav |
-| `frontend/src/routes/` | pages; hash router (`#/settings`) |
+
+Routes use the hash router (`#/documents`), so every page lives in one `index.html`.
+
+## Tests
+- `make test` runs the Go tests: store round trips, shared images, KV file mode, the fetch proxy.
+- `OLLAMA_URL=http://localhost:11434 OLLAMA_MODEL=<model> go test -tags webkit2_41 -run Ollama .`
+  streams a real chat completion through the proxy. Off by default.
 
 ## Notes
-- The top bar is the title bar (`--wails-draggable: drag`). Buttons and links inside opt out.
-- NEONDECK is copied in (`install-links=true`). After changing it in `sharable_assets`, rebuild it there,
-  then run `cd frontend && npm run update:neondeck` here.
+- WebKitGTK 4.1 needs `-tags webkit2_41`. The Makefile adds it.
+- `env_linux.go` turns off WebKit's DMA-BUF renderer (blank window on NVIDIA).
+- Windows: `make windows` cross-compiles from Linux. macOS needs a Mac or CI.

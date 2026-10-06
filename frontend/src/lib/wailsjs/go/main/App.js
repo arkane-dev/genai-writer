@@ -6,12 +6,16 @@ export function AppInfo() {
   return window['go']['main']['App']['AppInfo']();
 }
 
-export function GetSettings() {
-  return window['go']['main']['App']['GetSettings']();
+export function FetchCancel(arg1) {
+  return window['go']['main']['App']['FetchCancel'](arg1);
 }
 
-export function Ping(arg1) {
-  return window['go']['main']['App']['Ping'](arg1);
+export function FetchStart(arg1) {
+  return window['go']['main']['App']['FetchStart'](arg1);
+}
+
+export function GetSettings() {
+  return window['go']['main']['App']['GetSettings']();
 }
 
 export function SaveSettings(arg1) {

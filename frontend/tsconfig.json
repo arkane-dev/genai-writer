@@ -1,9 +1,20 @@
 {
-	"extends": "$app/tsconfig",
+	"extends": "./.svelte-kit/tsconfig.json",
 	"compilerOptions": {
-		"strict": true
-	},
-	"include": ["src", "vite.config.ts"],
-	// Wails-generated bindings: the .js files are untyped; imports resolve to the .d.ts beside them.
-	"exclude": ["src/lib/wailsjs/**/*.js"]
+		"rewriteRelativeImportExtensions": true,
+		"allowJs": true,
+		"checkJs": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"sourceMap": true,
+		"strict": true,
+		"moduleResolution": "bundler"
+	}
+	// Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
+	// except $lib which is handled by https://svelte.dev/docs/kit/configuration#files
+	//
+	// To make changes to top-level options such as include and exclude, we recommend extending
+	// the generated config; see https://svelte.dev/docs/kit/configuration#typescript
 }
