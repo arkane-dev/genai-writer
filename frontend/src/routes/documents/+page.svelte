@@ -1,15 +1,17 @@
+<!-- Documents as a shelf of data shards. Folders are shelves; documents are shards standing on them.
+     Click a shard to open it. Drag it to another shelf to move it, or use its Move action. -->
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { Dialog, Panel, Button, Input, Select, SectionHeader, Tag } from '@cyberpunk-apps/neondeck';
-	import { PencilIcon, Trash2Icon } from '@lucide/svelte';
+	import { Dialog, Button, Input, Select, SectionHeader } from '@cyberpunk-apps/neondeck';
+	import { PencilIcon, Trash2Icon, MoveRightIcon } from '@lucide/svelte';
+	import DataShard from '$lib/DataShard.svelte';
 	import { store, library, type Folder, type Document } from '$lib/platform/store.svelte';
 	import { currentDoc } from '$lib/currentDoc.svelte';
 
-	// ── Reactive data ──────────────────────────────────────────────────────────
+	// ── Library ─────────────────────────────────────────────────────────────────
 
 	let folders: Folder[] = $state([]);
 	let documents: Document[] = $state([]);
-	let selectedFolderId = $state<number | null | 'all'>('all');
 
 	// Re-read the library after every write (library.version bumps on each one).
 	$effect(() => {
@@ -20,119 +22,160 @@
 			folders = f;
 			documents = d;
 		});
-		return () => { stale = true; };
+		return () => {
+			stale = true;
+		};
 	});
 
+	interface Shelf {
+		id: number | null; // null = unfiled
+		name: string;
+		docs: Document[];
+		folder?: Folder;
+	}
+	// Unfiled first, so new documents are always in view. Then shelves by name.
+	const shelves = $derived<Shelf[]>([
+		{ id: null, name: 'Unfiled', docs: documents.filter((d) => d.folderId === null) },
+		...folders.map((f) => ({ id: f.id!, name: f.name, folder: f, docs: documents.filter((d) => d.folderId === f.id) }))
+	]);
+	const shelfOptions = $derived(shelves.map((s) => ({ value: s.id === null ? '' : String(s.id), label: s.name })));
 
-
-	let visibleDocuments = $derived(
-		selectedFolderId === 'all'
-			? documents
-			: documents.filter((d) => d.folderId === selectedFolderId)
-	);
-
-	// ── Create folder dialog ───────────────────────────────────────────────────
-
-	let showFolderDialog = $state(false);
-	let newFolderName = $state('');
-
-	async function createFolder() {
-		const name = newFolderName.trim();
-		if (!name) return;
-		await store.addFolder({ name, parentId: null, createdAt: Date.now() });
-		newFolderName = '';
-		showFolderDialog = false;
+	function openDocument(doc: Document) {
+		currentDoc.open(doc.id!, doc.title);
+		goto('#/');
 	}
 
-	// ── Create document dialog ─────────────────────────────────────────────────
+	const formatDate = (ts: number) => new Intl.DateTimeFormat(undefined, { dateStyle: 'short' }).format(new Date(ts));
+	const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+
+	// ── New document / shelf ────────────────────────────────────────────────────
 
 	let showDocDialog = $state(false);
 	let newDocTitle = $state('');
-	let newDocFolderId = $state<number | null>(null);
+	let newDocShelf = $state(''); // '' = unfiled
 
-	async function createDocument() {
-		const title = newDocTitle.trim() || 'Untitled Document';
-		const id = await store.addDocument({
-			title,
-			folderId: newDocFolderId,
-			createdAt: Date.now(),
-			updatedAt: Date.now(),
-		});
-		newDocTitle = '';
-		newDocFolderId = null;
-		showDocDialog = false;
-		openDocument(id, title);
+	function newDocOn(shelf: Shelf) {
+		newDocShelf = shelf.id === null ? '' : String(shelf.id);
+		showDocDialog = true;
 	}
 
-	// ── Open document ──────────────────────────────────────────────────────────
-
-	function openDocument(id: number, title: string) {
+	async function createDocument() {
+		const title = newDocTitle.trim() || 'Untitled document';
+		const id = await store.addDocument({
+			title,
+			folderId: newDocShelf === '' ? null : Number(newDocShelf),
+			createdAt: Date.now(),
+			updatedAt: Date.now()
+		});
+		newDocTitle = '';
+		showDocDialog = false;
 		currentDoc.open(id, title);
 		goto('#/');
 	}
 
-	// ── Rename / delete ────────────────────────────────────────────────────────
+	let showShelfDialog = $state(false);
+	let newShelfName = $state('');
 
-	async function deleteDocument(doc: Document) {
-		if (!confirm(`Delete "${doc.title}"? Its history will also be removed.`)) return;
-		await store.deleteDocument(doc.id!);
-		if (currentDoc.id === doc.id) currentDoc.close();
+	async function createShelf() {
+		const name = newShelfName.trim();
+		if (!name) return;
+		await store.addFolder({ name, parentId: null, createdAt: Date.now() });
+		newShelfName = '';
+		showShelfDialog = false;
 	}
 
-	async function deleteFolder(folder: Folder) {
-		const count = documents.filter((d) => d.folderId === folder.id).length;
-		const msg = count
-			? `Delete folder "${folder.name}"? The ${count} document(s) inside will be moved to root.`
-			: `Delete folder "${folder.name}"?`;
-		if (!confirm(msg)) return;
-		await store.deleteFolder(folder.id!);
-		if (selectedFolderId === folder.id) selectedFolderId = 'all';
-	}
+	// ── Rename / move / delete (one dialog each) ────────────────────────────────
 
-	// Inline rename: one item at a time, keyed "doc:<id>" or "folder:<id>".
-	let renaming = $state<string | null>(null);
+	let renameTarget = $state<{ kind: 'doc'; doc: Document } | { kind: 'shelf'; folder: Folder } | null>(null);
 	let renameText = $state('');
-	function startRename(key: string, current: string) {
-		renaming = key;
-		renameText = current;
+	let renameOpen = $state(false);
+
+	function startRename(target: NonNullable<typeof renameTarget>) {
+		renameTarget = target;
+		renameText = target.kind === 'doc' ? target.doc.title : target.folder.name;
+		renameOpen = true;
 	}
-	async function finishRename(commit: boolean) {
-		const key = renaming;
-		renaming = null;
-		if (!commit || !key) return;
-		const [kind, idText] = key.split(':');
-		const id = Number(idText);
-		if (kind === 'doc') {
-			const doc = documents.find((d) => d.id === id);
-			if (doc) await handleDocRename(doc, renameText);
+
+	async function confirmRename() {
+		const t = renameTarget;
+		renameOpen = false;
+		if (!t) return;
+		const text = renameText.trim();
+		if (t.kind === 'doc') {
+			const title = text || 'Untitled document';
+			if (title === t.doc.title) return;
+			await store.updateDocument(t.doc.id!, { title, updatedAt: Date.now() });
+			if (currentDoc.id === t.doc.id) currentDoc.setTitle(title);
+		} else if (text && text !== t.folder.name) {
+			await store.renameFolder(t.folder.id!, text);
+		}
+	}
+
+	let moveDoc = $state<Document | null>(null);
+	let moveTo = $state('');
+	let moveOpen = $state(false);
+
+	function startMove(doc: Document) {
+		moveDoc = doc;
+		moveTo = doc.folderId === null ? '' : String(doc.folderId);
+		moveOpen = true;
+	}
+
+	async function moveToShelf(doc: Document, shelfId: number | null) {
+		if (doc.folderId === shelfId) return;
+		await store.updateDocument(doc.id!, { folderId: shelfId });
+	}
+
+	async function confirmMove() {
+		moveOpen = false;
+		if (moveDoc) await moveToShelf(moveDoc, moveTo === '' ? null : Number(moveTo));
+	}
+
+	let deleteTarget = $state<{ kind: 'doc'; doc: Document } | { kind: 'shelf'; folder: Folder; count: number } | null>(null);
+	let deleteOpen = $state(false);
+
+	function startDelete(target: NonNullable<typeof deleteTarget>) {
+		deleteTarget = target;
+		deleteOpen = true;
+	}
+
+	async function confirmDelete() {
+		const t = deleteTarget;
+		deleteOpen = false;
+		if (!t) return;
+		if (t.kind === 'doc') {
+			await store.deleteDocument(t.doc.id!);
+			if (currentDoc.id === t.doc.id) currentDoc.close();
 		} else {
-			const folder = folders.find((f) => f.id === id);
-			if (folder) await handleFolderRename(folder, renameText);
-		}
-	}
-	function renameKeys(e: KeyboardEvent) {
-		if (e.key === 'Enter') finishRename(true);
-		else if (e.key === 'Escape') {
-			e.preventDefault();
-			finishRename(false);
+			await store.deleteFolder(t.folder.id!);
 		}
 	}
 
-	async function handleDocRename(doc: Document, text: string) {
-		const title = text.trim() || 'Untitled Document';
-		if (title === doc.title) return;
-		await store.updateDocument(doc.id!, { title, updatedAt: Date.now() });
-		if (currentDoc.id === doc.id) currentDoc.setTitle(title);
-	}
+	// ── Drag a shard to another shelf ───────────────────────────────────────────
 
-	async function handleFolderRename(folder: Folder, text: string) {
-		const name = text.trim() || folder.name;
-		if (name === folder.name) return;
-		await store.renameFolder(folder.id!, name);
-	}
+	let dragging = $state<Document | null>(null);
+	let overShelf = $state<number | null | undefined>(undefined); // undefined = none
 
-	function formatDate(ts: number): string {
-		return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ts));
+	function onDragStart(e: DragEvent, doc: Document) {
+		dragging = doc;
+		e.dataTransfer?.setData('text/plain', String(doc.id));
+		if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+	}
+	function onDragOver(e: DragEvent, shelf: Shelf) {
+		if (!dragging) return;
+		e.preventDefault();
+		overShelf = shelf.id;
+	}
+	async function onDrop(e: DragEvent, shelf: Shelf) {
+		e.preventDefault();
+		const doc = dragging;
+		dragging = null;
+		overShelf = undefined;
+		if (doc) await moveToShelf(doc, shelf.id);
+	}
+	function onDragEnd() {
+		dragging = null;
+		overShelf = undefined;
 	}
 </script>
 
@@ -140,93 +183,67 @@
 	<title>Documents · GenAI Writer</title>
 </svelte:head>
 
-<SectionHeader index="01" zh="文档" title="Documents" meta="{documents.length} doc{documents.length === 1 ? '' : 's'} · {folders.length} folder{folders.length === 1 ? '' : 's'}" />
+<SectionHeader index="01" zh="书架" title="Documents" meta="{plural(documents.length, 'shard')} · {plural(folders.length, 'shelf', 'shelves')}" />
 
-<div class="bar">
-	<Button variant="outline" onclick={() => (showFolderDialog = true)}>New folder</Button>
-	<Button onclick={() => (showDocDialog = true)}>New document</Button>
-</div>
+<div class="shelves">
+	{#each shelves as shelf, si (shelf.id ?? 'unfiled')}
+		<section class="shelf" class:over={overShelf === shelf.id} aria-labelledby="shelf-{shelf.id ?? 'u'}">
+			<header>
+				<span class="nd-index">/{String(si + 1).padStart(2, '0')}</span>
+				<h2 id="shelf-{shelf.id ?? 'u'}">{shelf.name}</h2>
+				<span class="nd-meta">{plural(shelf.docs.length, 'shard')}</span>
+				<span class="spacer"></span>
+				{#if shelf.folder}
+					{@const folder = shelf.folder}
+					<button class="act" aria-label="Rename shelf {shelf.name}" title="Rename shelf" onclick={() => startRename({ kind: 'shelf', folder })}><PencilIcon size={14} /></button>
+					<button class="act del" aria-label="Delete shelf {shelf.name}" title="Delete shelf" onclick={() => startDelete({ kind: 'shelf', folder, count: shelf.docs.length })}><Trash2Icon size={14} /></button>
+				{/if}
+			</header>
 
-<div class="layout">
-	<nav class="folders" aria-label="Folders">
-		<p class="nd-label">Folders</p>
-		<ul>
-			<li class:on={selectedFolderId === 'all'}>
-				<button class="pick" aria-pressed={selectedFolderId === 'all'} onclick={() => (selectedFolderId = 'all')}>
-					<span class="name">All documents</span><span class="count">{documents.length}</span>
-				</button>
-			</li>
-			<li class:on={selectedFolderId === null}>
-				<button class="pick" aria-pressed={selectedFolderId === null} onclick={() => (selectedFolderId = null)}>
-					<span class="name">Unfiled</span><span class="count">{documents.filter((d) => d.folderId === null).length}</span>
-				</button>
-			</li>
-			{#each folders as folder (folder.id)}
-				<li class:on={selectedFolderId === folder.id}>
-					{#if renaming === `folder:${folder.id}`}
-						<!-- svelte-ignore a11y_autofocus -->
-						<input class="rename" aria-label="Folder name" bind:value={renameText} autofocus onkeydown={renameKeys} onblur={() => finishRename(true)} />
-					{:else}
-						<button class="pick" aria-pressed={selectedFolderId === folder.id} onclick={() => (selectedFolderId = folder.id!)}>
-							<span class="name">{folder.name}</span><span class="count">{documents.filter((d) => d.folderId === folder.id).length}</span>
-						</button>
-						<span class="acts">
-							<button class="act" aria-label="Rename folder {folder.name}" title="Rename" onclick={() => startRename(`folder:${folder.id}`, folder.name)}><PencilIcon size={13} /></button>
-							<button class="act del" aria-label="Delete folder {folder.name}" title="Delete" onclick={() => deleteFolder(folder)}><Trash2Icon size={13} /></button>
-						</span>
-					{/if}
-				</li>
-			{/each}
-		</ul>
-	</nav>
-
-	<section aria-label="Documents">
-		{#if visibleDocuments.length === 0}
-			<div class="empty nd-hatch">
-				<p class="nd-meta">&gt; NO_DOCUMENTS_HERE</p>
-				<Button variant="outline" onclick={() => (showDocDialog = true)}>Create one</Button>
-			</div>
-		{:else}
-			<div class="grid">
-				{#each visibleDocuments as doc, i (doc.id)}
-					{@const folder = doc.folderId ? folders.find((f) => f.id === doc.folderId) : undefined}
-					<Panel index={String(i + 1).padStart(2, '0')} title={doc.title} meta={folder?.name ?? 'unfiled'} cut="sm" active={currentDoc.id === doc.id}>
-						{#if renaming === `doc:${doc.id}`}
-							<!-- svelte-ignore a11y_autofocus -->
-							<input class="rename" aria-label="Document title" bind:value={renameText} autofocus onkeydown={renameKeys} onblur={() => finishRename(true)} />
-						{/if}
-						<p class="nd-meta updated">updated {formatDate(doc.updatedAt)}</p>
-						<div class="card-acts">
-							{#if currentDoc.id === doc.id}<Tag tone="success" dot>open</Tag>{/if}
-							<span class="spacer"></span>
-							<button class="act" aria-label="Rename {doc.title}" title="Rename" onclick={() => startRename(`doc:${doc.id}`, doc.title)}><PencilIcon size={14} /></button>
-							<button class="act del" aria-label="Delete {doc.title}" title="Delete" onclick={() => deleteDocument(doc)}><Trash2Icon size={14} /></button>
-							<Button size="sm" variant="outline" arrow onclick={() => openDocument(doc.id!, doc.title)} aria-label="Open {doc.title}">Open</Button>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="row" ondragover={(e) => onDragOver(e, shelf)} ondragleave={() => (overShelf = undefined)} ondrop={(e) => onDrop(e, shelf)}>
+				{#each shelf.docs as doc (doc.id)}
+					<div class="slot">
+						<DataShard
+							docId={doc.id!}
+							title={doc.title}
+							updated={formatDate(doc.updatedAt)}
+							loaded={currentDoc.id === doc.id}
+							draggable="true"
+							ondragstart={(e: DragEvent) => onDragStart(e, doc)}
+							ondragend={onDragEnd}
+							onclick={() => openDocument(doc)}
+						/>
+						<div class="acts" role="group" aria-label="{doc.title} actions">
+							<button class="act" aria-label="Rename {doc.title}" title="Rename" onclick={() => startRename({ kind: 'doc', doc })}><PencilIcon size={14} /></button>
+							<button class="act" aria-label="Move {doc.title} to another shelf" title="Move to shelf" onclick={() => startMove(doc)}><MoveRightIcon size={14} /></button>
+							<button class="act del" aria-label="Delete {doc.title}" title="Delete" onclick={() => startDelete({ kind: 'doc', doc })}><Trash2Icon size={14} /></button>
 						</div>
-					</Panel>
+					</div>
 				{/each}
+				<div class="slot">
+					<button class="empty nd-hatch" onclick={() => newDocOn(shelf)}>
+						<span class="plus" aria-hidden="true">+</span>
+						<span class="nd-label">New shard<span class="sr"> on {shelf.name}</span></span>
+					</button>
+				</div>
 			</div>
-		{/if}
-	</section>
+			<div class="rail" aria-hidden="true">
+				<span>SHELF_{String(si + 1).padStart(2, '0')} // {shelf.name.toUpperCase()}</span>
+			</div>
+		</section>
+	{/each}
+
+	<button class="new-shelf" onclick={() => (showShelfDialog = true)}>
+		<span class="plus" aria-hidden="true">+</span>
+		<span class="nd-label">New shelf</span>
+	</button>
 </div>
 
-<Dialog bind:open={showFolderDialog} title="New folder" size="sm" onclose={() => (newFolderName = '')}>
-	<Input label="Folder name" placeholder="Research" bind:value={newFolderName} onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') createFolder(); }} />
-	{#snippet footer()}
-		<Button variant="ghost" onclick={() => (showFolderDialog = false)}>Cancel</Button>
-		<Button onclick={createFolder} disabled={!newFolderName.trim()}>Create</Button>
-	{/snippet}
-</Dialog>
-
-<Dialog bind:open={showDocDialog} title="New document" size="sm" onclose={() => { newDocTitle = ''; newDocFolderId = null; }}>
+<Dialog bind:open={showDocDialog} title="New document" size="sm" onclose={() => (newDocTitle = '')}>
 	<div class="form">
 		<Input label="Title" placeholder="Untitled document" bind:value={newDocTitle} onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') createDocument(); }} />
-		{#if folders.length > 0}
-			<Select label="Folder (optional)" bind:value={newDocFolderId}>
-				<option value={null}>None</option>
-				{#each folders as f (f.id)}<option value={f.id}>{f.name}</option>{/each}
-			</Select>
-		{/if}
+		<Select label="Shelf" bind:value={newDocShelf} options={shelfOptions} />
 	</div>
 	{#snippet footer()}
 		<Button variant="ghost" onclick={() => (showDocDialog = false)}>Cancel</Button>
@@ -234,51 +251,133 @@
 	{/snippet}
 </Dialog>
 
-<style>
-	.bar { display: flex; justify-content: flex-end; gap: var(--nd-space-3); margin: calc(var(--nd-space-2) * -1) 0 var(--nd-space-5); }
-	.layout { display: grid; grid-template-columns: 14rem minmax(0, 1fr); gap: var(--nd-space-6); align-items: start; }
+<Dialog bind:open={showShelfDialog} title="New shelf" size="sm" onclose={() => (newShelfName = '')}>
+	<Input label="Shelf name" placeholder="Research" bind:value={newShelfName} onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') createShelf(); }} />
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (showShelfDialog = false)}>Cancel</Button>
+		<Button onclick={createShelf} disabled={!newShelfName.trim()}>Create</Button>
+	{/snippet}
+</Dialog>
 
-	.folders ul { margin: var(--nd-space-2) 0 0; padding: 0; list-style: none; border-top: 1px solid var(--nd-line); }
-	.folders li { display: flex; align-items: center; border-bottom: 1px solid var(--nd-line); border-left: 2px solid transparent; }
-	.folders li.on { border-left-color: var(--nd-accent); background: var(--nd-accent-tint); }
-	.pick {
+<Dialog bind:open={renameOpen} title={renameTarget?.kind === 'shelf' ? 'Rename shelf' : 'Rename document'} size="sm">
+	<Input label="Name" bind:value={renameText} onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') confirmRename(); }} />
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (renameOpen = false)}>Cancel</Button>
+		<Button onclick={confirmRename}>Rename</Button>
+	{/snippet}
+</Dialog>
+
+<Dialog bind:open={moveOpen} title="Move to shelf" size="sm" meta={moveDoc?.title}>
+	<Select label="Shelf" bind:value={moveTo} options={shelfOptions} />
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (moveOpen = false)}>Cancel</Button>
+		<Button onclick={confirmMove}>Move</Button>
+	{/snippet}
+</Dialog>
+
+<Dialog bind:open={deleteOpen} title={deleteTarget?.kind === 'shelf' ? 'Delete shelf' : 'Delete document'} size="sm">
+	{#if deleteTarget?.kind === 'doc'}
+		<p>Delete “{deleteTarget.doc.title}” and all of its history? This can't be undone.</p>
+	{:else if deleteTarget?.kind === 'shelf'}
+		<p>
+			Delete the shelf “{deleteTarget.folder.name}”?
+			{#if deleteTarget.count}Its {plural(deleteTarget.count, 'document')} move to Unfiled. Nothing is deleted.{/if}
+		</p>
+	{/if}
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (deleteOpen = false)}>Cancel</Button>
+		<Button variant="danger" onclick={confirmDelete}>Delete</Button>
+	{/snippet}
+</Dialog>
+
+<style>
+	.shelves { display: flex; flex-direction: column; gap: var(--nd-space-10); }
+
+	.shelf header { display: flex; align-items: baseline; gap: var(--nd-space-3); margin-bottom: var(--nd-space-2); }
+	h2 { margin: 0; font-family: var(--nd-font-ui); font-size: var(--nd-text-lg); letter-spacing: var(--nd-tracking-label); }
+	.spacer { flex: 1; }
+
+	/* Shards stand on the rail. The row scrolls sideways when a shelf is full. */
+	.row {
 		display: flex;
-		flex: 1;
-		min-width: 0;
-		gap: var(--nd-space-2);
-		padding: var(--nd-space-2) var(--nd-space-3);
-		border: 0;
-		background: transparent;
-		text-align: left;
-		cursor: pointer;
+		align-items: flex-end;
+		gap: var(--nd-space-5);
+		overflow-x: auto;
+		padding: var(--nd-space-5) var(--nd-space-2) 0;
 	}
-	.pick:hover { background: var(--nd-surface-2); }
-	.on .pick { color: var(--nd-accent); }
-	.name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--nd-font-ui); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; font-size: var(--nd-text-sm); }
-	.count { font-family: var(--nd-font-mono); font-size: var(--nd-text-xs); color: var(--nd-text-mute); }
-	.acts { display: flex; opacity: 0; }
-	.folders li:hover .acts, .folders li:focus-within .acts { opacity: 1; }
+	.slot { position: relative; flex: none; }
+	/* Shard actions: a small panel on the top-right corner, beside the connector. */
+	.acts {
+		position: absolute;
+		top: 0;
+		right: -0.4rem;
+		z-index: 1;
+		display: flex;
+		flex-direction: column;
+		border: 1px solid var(--nd-line-strong);
+		background: var(--nd-surface-3);
+		opacity: 0;
+		transition: opacity var(--nd-dur-fast) var(--nd-ease);
+	}
+	.slot:hover .acts, .slot:focus-within .acts { opacity: 1; }
 	.act { display: grid; place-items: center; width: 1.75rem; height: 1.75rem; border: 0; background: transparent; color: var(--nd-text-mute); cursor: pointer; }
 	.act:hover { background: var(--nd-surface-2); color: var(--nd-text); }
 	.act.del:hover { color: var(--nd-danger); }
-	.rename {
-		flex: 1;
-		width: 100%;
-		margin: var(--nd-space-1) 0;
-		padding: var(--nd-space-1) var(--nd-space-2);
-		border: 1px solid var(--nd-accent);
-		outline: none;
-		background: var(--nd-void);
-		font-family: var(--nd-font-mono);
-		font-size: var(--nd-text-sm);
+
+	.empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: var(--nd-space-2);
+		width: 8.25rem;
+		height: 14.5rem;
+		border: 1px solid var(--nd-line);
+		background-color: transparent;
+		color: var(--nd-text-mute);
+		cursor: pointer;
 	}
+	/* Quieter hatching than .nd-hatch: an empty slot shouldn't outshine the shards. */
+	.empty.nd-hatch { background-image: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--nd-line) 55%, transparent) 0 1px, transparent 1px 10px); }
+	.empty:hover { border-color: var(--nd-accent); color: var(--nd-accent); }
+	.empty:focus-visible { outline: 2px solid var(--nd-focus); outline-offset: 4px; }
+	.plus { font-family: var(--nd-font-mono); font-size: var(--nd-text-3xl); line-height: 1; }
 
-	.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: var(--nd-space-4); }
-	.updated { margin: 0 0 var(--nd-space-3); }
-	.card-acts { display: flex; align-items: center; gap: var(--nd-space-1); }
-	.spacer { flex: 1; }
-	.empty { display: flex; flex-direction: column; align-items: center; gap: var(--nd-space-3); padding: var(--nd-space-12) var(--nd-space-4); border: 1px solid var(--nd-line); }
+	/* The shelf: a lit dock bar the shards stand on. */
+	.rail {
+		position: relative;
+		height: 1.1rem;
+		border-top: 2px solid var(--nd-line-strong);
+		background: linear-gradient(var(--nd-surface-3), var(--nd-surface-1) 60%, var(--nd-bg));
+		box-shadow: 0 6px 14px color-mix(in srgb, var(--nd-void) 80%, transparent);
+		transition: border-color var(--nd-dur-fast) var(--nd-ease), box-shadow var(--nd-dur-fast) var(--nd-ease);
+	}
+	.rail span {
+		position: absolute;
+		top: 0.3rem;
+		right: var(--nd-space-2);
+		font-family: var(--nd-font-mono);
+		font-size: var(--nd-text-2xs);
+		color: var(--nd-text-mute);
+		line-height: 1;
+	}
+	/* Drop target: the shelf lights up. */
+	.shelf.over .rail { border-top-color: var(--nd-accent); box-shadow: 0 -2px 12px color-mix(in srgb, var(--nd-accent) 45%, transparent); }
+	.shelf.over .row { background: var(--nd-accent-tint); }
+
+	.new-shelf {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--nd-space-3);
+		padding: var(--nd-space-5);
+		border: 1px solid var(--nd-line);
+		background: transparent;
+		color: var(--nd-text-mute);
+		cursor: pointer;
+	}
+	.new-shelf:hover { border-color: var(--nd-accent); color: var(--nd-accent); }
+	.new-shelf .plus { font-size: var(--nd-text-xl); }
+	.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 	.form { display: flex; flex-direction: column; gap: var(--nd-space-4); }
-
-	@media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
 </style>
