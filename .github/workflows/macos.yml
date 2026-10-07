@@ -29,7 +29,9 @@ permissions:
 
 jobs:
   macos:
-    runs-on: macos-latest
+    # Intel runner: Apple Silicon runners often queue for capacity. It still builds the
+    # universal app, which runs on both Intel and Apple Silicon.
+    runs-on: macos-15-intel
     env:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
       GH_TOKEN: ${{ github.token }}
