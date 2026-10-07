@@ -8,12 +8,15 @@
 	import AttachmentList from '$lib/AttachmentList.svelte';
 	import { generateItem } from '$lib/generation';
 	import { getConfig } from '$lib/config';
+	import { toaster } from '$lib/toaster';
 
 	let { sectionId, content, onClose }: { sectionId: string; content: TreeNode; onClose: (data: Partial<TreeNode> | null) => void } = $props();
 
 	let activeTab = $state('details');
 	let open = $state(true);
 	let isGenerating = $state(false);
+	// The node being generated. Reactive, so the Output tab shows text as it streams in.
+	let live = $state<TreeNode | null>(null);
 	// untrack() marks each read as an intentional one-time initialisation, not a reactive subscription.
 	// The modal always mounts fresh (parent uses {#if editingContent}), so no resync effect is needed.
 	let localType = $state(untrack(() => content.type));
@@ -117,20 +120,23 @@
 					localText,
 			};
 
-			await generateItem(tempNode, null, []);
+			live = tempNode;
+			activeTab = 'output';
+			await generateItem(live, null, []);
+			const done = live;
 
 			// Copy generated fields back to the live content node for display
-			content.generated_content = tempNode.generated_content;
-			if (tempNode.imageUrl) {
-				content.imageUrl = tempNode.imageUrl;
-				imageUrlInput = tempNode.imageUrl; // sync so handleSave picks it up
+			content.generated_content = done.generated_content;
+			if (done.imageUrl) {
+				content.imageUrl = done.imageUrl;
+				imageUrlInput = done.imageUrl; // sync so handleSave picks it up
 			}
-			if (tempNode.altText) content.altText = tempNode.altText;
-
-			activeTab = 'output';
+			if (done.altText) content.altText = done.altText;
 		} catch (error) {
 			console.error('Generation error:', error);
+			toaster.create({ title: 'Generation failed', description: String(error), type: 'error' });
 		}
+		live = null;
 		isGenerating = false;
 	}
 
@@ -263,8 +269,10 @@
 				</div>
 
 			{:else}
-				{@const out = currentGenerateMode ? content.generated_content : null}
-				{#if currentGenerateMode && !out}
+				{@const out = currentGenerateMode ? (live ?? content).generated_content : null}
+				{#if isGenerating && !out}
+					<p class="nd-meta">&gt; generating…</p>
+				{:else if currentGenerateMode && !out}
 					<p class="nd-meta">&gt; no output yet. Press Generate now.</p>
 				{:else if localType === 'equation' && (out || localEquation)}
 					<div class="eq paper nd-paper">{@html renderToString(out || localEquation, { throwOnError: false, displayMode: true })}</div>

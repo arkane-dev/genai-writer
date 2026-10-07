@@ -4,6 +4,7 @@ export function buildEquationPrompt(node: TreeNode, section: TreeNode | null, ba
 	return [
 		`Write a LaTeX equation for: "${node.label}"`,
 		section?.label ? `Context: part of a document section about "${section.label}".` : '',
+		node.content?.trim() ? `What the equation should show: ${node.content.trim()}` : '',
 		node.description ? `Description: ${node.description}` : '',
 		node.purpose ? `Purpose: ${node.purpose}` : '',
 		node.additional_details ? `Additional details: ${node.additional_details}` : '',

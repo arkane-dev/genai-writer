@@ -5,6 +5,7 @@ export function buildTextBlockPrompt(node: TreeNode, section: TreeNode | null, b
 	return [
 		`Write a text block titled "${node.label}" for a document.`,
 		section?.label ? `This block is part of a section called "${section.label}".` : '',
+		node.content?.trim() ? `What to write: ${node.content.trim()}` : '',
 		node.description ? `Description: ${node.description}` : '',
 		node.purpose ? `Purpose: ${node.purpose}` : '',
 		node.key_points ? `Key points to cover: ${node.key_points}` : '',

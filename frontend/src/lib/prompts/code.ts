@@ -4,6 +4,7 @@ export function buildCodePrompt(node: TreeNode, section: TreeNode | null, backgr
 	return [
 		`Write code for: "${node.label}"`,
 		section?.label ? `Context: part of a document section about "${section.label}".` : '',
+		node.content?.trim() ? `What the code should do: ${node.content.trim()}` : '',
 		node.description ? `What it does: ${node.description}` : '',
 		node.purpose ? `Purpose: ${node.purpose}` : '',
 		node.key_points ? `Requirements: ${node.key_points}` : '',
