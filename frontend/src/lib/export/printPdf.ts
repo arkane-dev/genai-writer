@@ -99,9 +99,14 @@ export function printAsPdf(tree: TreeNode[], title: string): void {
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="color-scheme" content="light">
 <title>${escapeHtml(title || 'Document')}</title>
 ${katexCss}
 <style>
+  /* Always a white page. Without it, the frame shows the app window colour (#070818) behind the text. */
+  :root { color-scheme: light; }
+  html, body { background: #fff; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: Georgia, serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #111; line-height: 1.6; }
   h1,h2,h3,h4,h5,h6 { font-family: system-ui, sans-serif; margin-top: 1.5em; }
   pre { background: #f5f5f5; padding: 1em; overflow: auto; border-radius: 4px; font-size: 0.9em; }

@@ -27,7 +27,7 @@ export function printHtml(html: string): boolean {
 	if (inWails) {
 		const frame = document.createElement('iframe');
 		frame.setAttribute('aria-hidden', 'true');
-		frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+		frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;background:#fff;color-scheme:light';
 		frame.srcdoc = html; // the document calls print() on load
 		document.body.appendChild(frame);
 		setTimeout(() => frame.remove(), 60_000);
