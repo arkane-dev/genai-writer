@@ -7,7 +7,7 @@ import (
 )
 
 // Version is rewritten at release time (or by hand). Shown in the status bar.
-const Version = "0.1.0"
+const Version = "0.1.1"
 
 // App holds backend state. Every exported method is callable from the frontend
 // through the generated bindings in frontend/src/lib/wailsjs/go/main/App.
