@@ -13,9 +13,11 @@ Wails v2 (Go) + SvelteKit (Svelte 5) + NEONDECK. Started as a browser app, then 
   axe: 0 violations on every screen and dialog (WCAG 2.2 AA).
 
 ## Download
-Linux and Windows builds are on the [Releases](https://github.com/arkane-dev/genai-writer/releases) page.
+Linux, Windows and macOS builds are on the [Releases](https://github.com/arkane-dev/genai-writer/releases) page.
 Linux needs GTK 3 and WebKitGTK 4.1 (`webkit2gtk-4.1` on Arch/Manjaro, `libwebkit2gtk-4.1-0` on Debian/Ubuntu).
 The Windows build needs Windows 10 or 11. It isn't code-signed yet, so SmartScreen may warn the first time.
+The macOS build is one app for Intel and Apple Silicon and needs macOS 12 or later. It isn't signed with
+an Apple Developer ID, so macOS blocks the first launch: use *System Settings → Privacy & Security → Open Anyway*.
 
 ## Build from source
 NEONDECK, the design system, lives in its own repo and installs from a folder beside this one:
@@ -34,6 +36,7 @@ make dev                           # live reload; also serves the app at http://
 make build                         # binary in build/bin/
 make test                          # go vet + go test
 make bindings                      # after adding/changing exported Go methods
+make dist VERSION=0.1.2            # release archives + SHA256SUMS in build/dist/
 ```
 `cd frontend && npm run dev` runs the UI in a plain browser. It then uses IndexedDB and browser
 fetch instead of Go, the same code path a hosted web build would use.
@@ -61,6 +64,12 @@ in `images/` by content hash, and snapshots refer to them.
 | `frontend/src/lib/wailsjs/` | generated bindings (`make bindings`), committed |
 
 Routes use the hash router (`#/documents`), so every page lives in one `index.html`.
+
+## Release
+1. `make dist VERSION=x.y.z` sets the version, builds Linux and Windows, and writes the archives and `SHA256SUMS` to `build/dist/`.
+2. Commit, tag `vx.y.z` and push. Then `gh release create vx.y.z -F notes.md build/dist/*`.
+3. Publishing starts `.github/workflows/macos.yml`, which builds the macOS app and attaches it to the release.
+4. Update the download links in the site's `src/lib/content/projects.ts`.
 
 ## Tests
 - `make test` runs the Go tests: store round trips, shared images, KV file mode, the fetch proxy.

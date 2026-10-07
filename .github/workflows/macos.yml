@@ -1,7 +1,7 @@
 # Build the macOS app and attach it to a GitHub release.
 #
 # Wails can't cross-compile to macOS, so this runs on a Mac runner. Linux and Windows
-# builds are made locally (make build, make windows) and uploaded with the release.
+# builds are made locally (make dist VERSION=x.y.z) and uploaded with the release.
 #
 # The app is ad-hoc signed only, not signed with an Apple Developer ID or notarised.
 # Apple Silicon needs at least an ad-hoc signature to run. Gatekeeper still blocks
