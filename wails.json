@@ -10,5 +10,12 @@
   "author": {
     "name": "Andrew",
     "email": "dev@andrewrkane.com"
+  },
+  "info": {
+    "companyName": "Andrew R. Kane",
+    "productName": "GenAI Writer",
+    "productVersion": "0.1.1",
+    "copyright": "Copyright © 2026 Andrew R. Kane. MIT license.",
+    "comments": "A document editor where the AI writes the prose."
   }
 }
