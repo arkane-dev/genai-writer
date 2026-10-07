@@ -74,3 +74,7 @@ Routes use the hash router (`#/documents`), so every page lives in one `index.ht
 - WebKitGTK 4.1 needs `-tags webkit2_41`. The Makefile adds it.
 - `env_linux.go` turns off WebKit's DMA-BUF renderer (blank window on NVIDIA).
 - Windows: `make windows` cross-compiles from Linux. macOS needs a Mac or CI.
+
+## License
+
+[MIT](LICENSE) © 2026 Andrew R. Kane
